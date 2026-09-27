@@ -1,0 +1,19 @@
+{
+  "name": "qawarness",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "smoke": "bun run src/smoke.ts",
+    "action-smoke": "bun run src/action-smoke.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.2"
+  },
+  "peerDependencies": {
+    "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "playwright": "^1.63.0"
+  }
+}
