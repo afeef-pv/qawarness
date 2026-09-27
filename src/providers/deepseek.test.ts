@@ -19,10 +19,13 @@ describe("DeepSeekProvider", () => {
   });
   test("translates JSON mode and normalizes a successful response", async () => {
     let payload: Record<string, unknown> | undefined;
+    let signal: AbortSignal | null | undefined;
+    const controller = new AbortController();
     const provider = new DeepSeekProvider({
       apiKey: "test-key",
       fetch: (async (_url, init) => {
         payload = JSON.parse(String(init?.body));
+        signal = init?.signal;
         return Response.json({
           model: "deepseek-flash",
           choices: [{ message: { content: "{\"ok\":true}" }, finish_reason: "stop" }],
@@ -35,10 +38,12 @@ describe("DeepSeekProvider", () => {
       messages: [{ role: "user", content: "Return JSON" }],
       maxTokens: 20,
       responseFormat: { type: "json" },
+      signal: controller.signal,
     });
 
     expect(payload?.response_format).toEqual({ type: "json_object" });
     expect(payload?.max_tokens).toBe(20);
+    expect(signal).toBe(controller.signal);
     expect(response).toEqual({
       provider: "deepseek",
       model: "deepseek-flash",

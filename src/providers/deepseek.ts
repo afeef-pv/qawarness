@@ -50,6 +50,7 @@ export class DeepSeekProvider implements LLMProvider {
     try {
       response = await this.http(this.endpoint, {
         method: "POST",
+        signal: request.signal,
         headers: {
           authorization: `Bearer ${this.apiKey}`,
           "content-type": "application/json",

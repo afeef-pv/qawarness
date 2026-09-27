@@ -8,9 +8,17 @@ export type QAProof =
   | { type: "element_visible" | "element_not_visible"; target: SemanticTarget }
   | { type: "element_text" | "element_value"; target: SemanticTarget; equals: string }
   | { type: "judge"; text: string };
-export interface QAScenario { name: string; startUrl: string; instruction: string; proof: QAProof[]; maxSteps: number }
+export interface QAScenario { name: string; startUrl: string; instruction: string; proof: QAProof[]; maxSteps: number; maxDuration?: string }
 export const object = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const str = (v: unknown): v is string => typeof v === "string" && !!v.trim();
+export function parseDurationMs(v: unknown): number {
+  if (typeof v !== "string") throw new Error("maxDuration must be a duration such as 90m");
+  const match = /^(\d+)(ms|s|m|h)$/.exec(v);
+  const units: Record<string, number> = { ms: 1, s: 1000, m: 60_000, h: 3_600_000 };
+  const duration = match ? Number(match[1]) * units[match[2]!]! : NaN;
+  if (!Number.isSafeInteger(duration) || duration < 1) throw new Error("maxDuration must be a positive duration such as 90m");
+  return duration;
+}
 export function parseTarget(v: unknown): SemanticTarget {
   if (!object(v)) throw new Error("target must be an object");
   switch (v.by) {
@@ -28,6 +36,7 @@ export function parseScenario(v: unknown): QAScenario {
   if (!["http:", "https:"].includes(url.protocol)) throw new Error("startUrl must be HTTP(S)");
   const maxSteps = v.maxSteps === undefined ? 30 : v.maxSteps;
   if (!Number.isSafeInteger(maxSteps) || (maxSteps as number) < 1) throw new Error("maxSteps must be a positive integer");
+  if (v.maxDuration !== undefined) parseDurationMs(v.maxDuration);
   const proof = v.proof.map((p: unknown, i: number): QAProof => {
     if (!object(p)) throw new Error(`proof ${i + 1} must be an object`);
     switch (p.type) {
@@ -39,6 +48,7 @@ export function parseScenario(v: unknown): QAScenario {
     }
     throw new Error(`invalid proof ${i + 1}`);
   });
-  return { name: v.name, startUrl: v.startUrl, instruction: v.instruction, proof, maxSteps: maxSteps as number };
+  return { name: v.name, startUrl: v.startUrl, instruction: v.instruction, proof, maxSteps: maxSteps as number,
+    ...(v.maxDuration === undefined ? {} : { maxDuration: v.maxDuration as string }) };
 }
 export async function loadScenario(path: string): Promise<QAScenario> { return parseScenario(YAML.parse(await readFile(path, "utf8"))); }

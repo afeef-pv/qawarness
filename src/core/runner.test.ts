@@ -8,6 +8,7 @@ import { scenarioContentHash } from "./run-store";
 import { runScenario } from "./runner";
 import { redactRecord } from "./recorder";
 import { PlaywrightEnvironment } from "../environments/playwright";
+import type { QAEnvironment } from "./environment";
 import type { LLMProvider } from "./llm/provider";
 
 test("scenario and model action boundaries reject malformed input", () => {
@@ -23,6 +24,24 @@ test("judge proof requires text and changes scenario version content", () => {
   expect(() => parseScenario({ ...base, proof: [{ type: "judge", text: "  " }] })).toThrow();
   expect(scenarioContentHash(parseScenario(base))).not.toBe(scenarioContentHash(parseScenario({ ...base, proof: [{ type: "judge", text: "The account is active." }] })));
 });
+
+test("scenario duration is validated and versioned", () => {
+  const base = { name: "x", startUrl: "http://localhost", instruction: "do it", proof: [{ type: "text_visible", text: "Done" }], maxDuration: "90m" };
+  expect(parseScenario(base).maxDuration).toBe("90m");
+  expect(() => parseScenario({ ...base, maxDuration: "later" })).toThrow();
+  expect(scenarioContentHash(parseScenario(base))).not.toBe(scenarioContentHash(parseScenario({ ...base, maxDuration: "30m" })));
+});
+
+function changingEnvironment(): QAEnvironment {
+  let state = 0;
+  return {
+    async start() {}, async navigate() {}, async close() {},
+    async act() { state++; return { success: true }; },
+    async observe() { return { platform: "web", location: { url: "http://localhost/" }, text: `State ${state}`, elements: [], errors: [] }; },
+    async inspect() { return { count: 0, elements: [] }; },
+    async screenshot(path) { await Bun.write(path, ""); },
+  };
+}
 
 test("password input is masked before recording", () => {
   const record = redactRecord({ sequence: 1, action: { type: "fill", target: { by: "label", label: "Password" }, value: "sample-secret" },
@@ -72,4 +91,64 @@ test("runner executes one action, done and independent proof", async () => {
     expect(failed.proofResults.slice(0, 5).every(proof => proof.passed)).toBe(true);
     expect(failed.proofResults[5]).toMatchObject({ passed: false, status: "not_satisfied" });
   } finally { server.stop(true); await rm(directory, { recursive: true, force: true }); }
+});
+
+test("runner stops repeated actions without visible progress", async () => {
+  const server = Bun.serve({ port: 0, fetch: () => new Response("<button>Retry</button>", { headers: { "content-type": "text/html" } }) });
+  const directory = await mkdtemp(join(tmpdir(), "qawarness-stalled-"));
+  let calls = 0;
+  const provider: LLMProvider = { name: "fake", async generate() {
+    calls++;
+    return { provider: "fake", model: "fake", text: "", toolCalls: [{ id: String(calls), name: "click", arguments: { target: { by: "role", role: "button", name: "Retry" } } }] };
+  } };
+  try {
+    const scenario = parseScenario({ name: "stalled", startUrl: `http://localhost:${server.port}/`, instruction: "Complete the task", proof: [{ type: "text_visible", text: "Complete" }], maxSteps: 100 });
+    const report = await runScenario(scenario, provider, new PlaywrightEnvironment(), directory);
+    expect(report.result).toBe("stalled");
+    expect(report.steps).toBe(5);
+    expect(calls).toBe(5);
+    expect(report.completionReason).toBeUndefined();
+    expect(report.errors[0]).toContain("no visible state change");
+    expect(report.proofResults).toEqual([]);
+    expect((await readFile(join(directory, "actions.jsonl"), "utf8")).trim().split("\n")).toHaveLength(5);
+  } finally { server.stop(true); await rm(directory, { recursive: true, force: true }); }
+});
+
+test("runner caps scenario requests at 200 steps and 90 minutes", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "qawarness-limits-"));
+  let calls = 0;
+  const provider: LLMProvider = { name: "fake", async generate() {
+    calls++;
+    return { provider: "fake", model: "fake", text: "", toolCalls: [{ id: String(calls), name: "scroll", arguments: { deltaY: calls } }] };
+  } };
+  try {
+    const scenario = parseScenario({ name: "limits", startUrl: "http://localhost/", instruction: "Keep going", proof: [{ type: "text_visible", text: "Done" }], maxSteps: 5000, maxDuration: "2h" });
+    const report = await runScenario(scenario, provider, changingEnvironment(), directory);
+    expect(report.result).toBe("max_steps");
+    expect(report.steps).toBe(200);
+    expect(calls).toBe(200);
+    expect(report.limits).toEqual({ maxSteps: 200, maxDurationMs: 90 * 60_000 });
+    expect(report.scenario.maxSteps).toBe(5000);
+    expect(report.proofResults).toEqual([]);
+    expect(JSON.parse(await readFile(join(directory, "report.json"), "utf8")).limits).toEqual(report.limits);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test("runner stops when duration expires during a provider request", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "qawarness-duration-"));
+  let calls = 0;
+  const provider: LLMProvider = { name: "fake", generate(request) {
+    calls++;
+    return new Promise((_, reject) => request.signal?.addEventListener("abort", () => reject(new Error("aborted")), { once: true }));
+  } };
+  try {
+    const scenario = parseScenario({ name: "duration", startUrl: "http://localhost/", instruction: "Keep going", proof: [{ type: "text_visible", text: "Done" }], maxDuration: "25ms" });
+    const report = await runScenario(scenario, provider, changingEnvironment(), directory);
+    expect(report.result).toBe("max_duration");
+    expect(report.limits.maxDurationMs).toBe(25);
+    expect(report.steps).toBe(0);
+    expect(calls).toBe(1);
+    expect(report.errors[0]).toContain("duration limit");
+    expect(report.proofResults).toEqual([]);
+  } finally { await rm(directory, { recursive: true, force: true }); }
 });

@@ -20,6 +20,7 @@ export interface RunRecord {
   agent: { provider: string; model: string };
   environment: { platform: string; backend: string; startUrl: string };
   stepCount: number;
+  limits?: RunReport["limits"];
   completion?: { reason?: string };
   proofResults?: RunReport["proofResults"];
   finalObservation?: RunReport["finalObservation"];
@@ -39,7 +40,7 @@ export interface RunStore {
 }
 
 export function scenarioContentHash(scenario: QAScenario): string {
-  return createHash("sha256").update(JSON.stringify({ name: scenario.name, startUrl: scenario.startUrl, instruction: scenario.instruction, proof: scenario.proof, maxSteps: scenario.maxSteps })).digest("hex");
+  return createHash("sha256").update(JSON.stringify({ name: scenario.name, startUrl: scenario.startUrl, instruction: scenario.instruction, proof: scenario.proof, maxSteps: scenario.maxSteps, maxDuration: scenario.maxDuration })).digest("hex");
 }
 
 export function redactScenario(scenario: QAScenario): QAScenario {

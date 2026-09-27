@@ -19,6 +19,7 @@ export interface LLMToolCall {
 
 export interface LLMRequest {
   messages: LLMMessage[];
+  signal?: AbortSignal;
   temperature?: number;
   maxTokens?: number;
   responseFormat?: { type: "text" | "json" };

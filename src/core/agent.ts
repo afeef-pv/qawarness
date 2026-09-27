@@ -34,17 +34,29 @@ export function summarizeObservation(o: QAObservation): string {
   const elements = o.elements.filter(e => e.visible).slice(0, 80).map(e => `[${e.role ?? "element"}] ${JSON.stringify((e.label ?? e.text ?? "").replace(/\s+/g, " ").trim().slice(0, 120))}${e.id ? ` id=${e.id}` : ""}${e.enabled ? "" : " disabled"}`).join("\n");
   return `URL: ${(o.location.url ?? "").slice(0, 1000)}\nTitle: ${(o.location.title ?? "").slice(0, 300)}\nVisible text:\n${o.text.slice(0, 8000)}\nInteractive elements:\n${elements}\nErrors:\n${o.errors.slice(-10).map(error => error.slice(0, 500)).join("\n")}`;
 }
-export interface AgentResult { status: "done" | "max_steps" | "agent_protocol_error"; completionReason?: string; steps: number; finalObservation: QAObservation }
-export async function runAgent(scenario: QAScenario, environment: QAEnvironment, provider: LLMProvider, executor: QAExecutor): Promise<AgentResult> {
+export interface AgentResult { status: "done" | "max_steps" | "max_duration" | "agent_protocol_error" | "stalled"; completionReason?: string; stopReason?: string; steps: number; finalObservation: QAObservation }
+export async function runAgent(scenario: QAScenario, environment: QAEnvironment, provider: LLMProvider, executor: QAExecutor,
+  limits: { maxSteps: number; signal: AbortSignal }): Promise<AgentResult> {
   let observation = await environment.observe();
+  const visibleState = (o: QAObservation) => JSON.stringify({ location: o.location, text: o.text, elements: o.elements.filter(element => element.visible) });
   const messages: LLMMessage[] = [
     { role: "system", content: "You execute a QA task in a web app. Use only one provided tool per turn. Prefer role/name, then label, text, testId, CSS, coordinates. For role/name, use the complete observed name, including symbols. Inspect before guessing. Recover from ordinary action failures. Call done when you believe the task is complete; prose is not completion. Avoid unnecessary actions." },
     { role: "user", content: `Instruction:\n${scenario.instruction}\n\nCurrent state:\n${summarizeObservation(observation)}` },
   ];
   let steps = 0;
   let protocolErrors = 0;
-  while (steps < scenario.maxSteps) {
-    const response = await provider.generate({ messages, tools: QA_TOOLS, temperature: 0 });
+  let previousAction = "";
+  let previousState = visibleState(observation);
+  let repeatedActions = 0;
+  while (steps < limits.maxSteps) {
+    if (limits.signal.aborted) return { status: "max_duration", steps, finalObservation: observation };
+    let response;
+    try { response = await provider.generate({ messages, tools: QA_TOOLS, temperature: 0, signal: limits.signal }); }
+    catch (error) {
+      if (limits.signal.aborted) return { status: "max_duration", steps, finalObservation: observation };
+      throw error;
+    }
+    if (limits.signal.aborted) return { status: "max_duration", steps, finalObservation: observation };
     const calls = response.toolCalls ?? [];
     if (calls.length !== 1) {
       if (++protocolErrors >= 3) return { status: "agent_protocol_error", steps, finalObservation: observation };
@@ -66,8 +78,16 @@ export async function runAgent(scenario: QAScenario, environment: QAEnvironment,
     }
     steps++;
     const record: ExecutionRecord = await executor.execute(action);
+    if (limits.signal.aborted) return { status: "max_duration", steps, finalObservation: record.observation ?? observation };
     if (action.type === "done") return { status: "done", completionReason: action.reason, steps, finalObservation: observation };
     observation = record.observation ?? await environment.observe();
+    const actionKey = JSON.stringify(action);
+    const state = visibleState(observation);
+    if (state !== previousState) repeatedActions = 0;
+    else repeatedActions = actionKey === previousAction ? repeatedActions + 1 : 1;
+    previousAction = actionKey;
+    previousState = state;
+    if (repeatedActions >= 5) return { status: "stalled", stopReason: "The same action produced no visible state change five times in a row.", steps, finalObservation: observation };
     result = JSON.stringify({ status: record.status, error: record.error, inspection: record.inspection, observation: summarizeObservation(observation) });
     messages.push({ role: "tool", toolCallId: call.id, content: result });
   }

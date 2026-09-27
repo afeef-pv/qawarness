@@ -267,6 +267,17 @@ verification and never implies a pass. Deterministic proof checks come before an
 model-based verification. Current run statuses describe execution outcomes, not the
 eventual product-versus-agent failure diagnosis taxonomy.
 
+The execution loop stops with `stalled` when the same action five times in a row
+leaves the visible normalized state unchanged. This bounds repeated tool-call loops
+without treating `stalled` as proof or a product failure.
+
+Runs have ceilings of 200 agent steps and 90 minutes, even if a scenario
+requests more. Scenario `maxSteps` and optional `maxDuration` may set lower limits.
+The effective limits are recorded with each run. Reaching the duration limit stops
+execution as `max_duration` and prevents verification from reporting a pass.
+Provider requests are aborted at the deadline; a browser action already in flight
+may finish before the run stops.
+
 Do not let the execution agent's belief substitute for proof.
 
 `judge` is a first-class proof type whose `text` is a natural-language verification
