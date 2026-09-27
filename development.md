@@ -256,11 +256,22 @@ The instruction tells the execution agent what to accomplish.
 
 The proof tells the verifier what must actually be true.
 
+Execution agents receive the instruction and observations, never the proof. Scenario
+files are validated before the browser or provider starts. Local application servers
+are started externally; the CLI connects to an already-running URL.
+
+The agent receives only restricted semantic QA tools. Every model tool call is
+untrusted and validated before execution. The loop is observe → one action → observe;
+ordinary action failures return to the agent for recovery. `done` starts independent
+verification and never implies a pass. Deterministic proof checks come before any
+model-based verification. Current run statuses describe execution outcomes, not the
+eventual product-versus-agent failure diagnosis taxonomy.
+
 Do not let the execution agent's belief substitute for proof.
 
 ## Model responsibilities
 
-When model integration is eventually added, responsibilities should stay narrow.
+Model responsibilities stay narrow.
 
 The primary LLM may perform:
 
@@ -281,11 +292,11 @@ Jev is intended for narrow judgments over structured or textual state such as:
 
 Do not send Jev screenshots directly unless the architecture is intentionally changed later.
 
-Do not add LLM integration until the deterministic environment/action/recording foundation is sound.
+Keep model execution behind the provider and environment boundaries.
 
 ## Evidence
 
-The eventual harness should be able to preserve evidence including:
+The harness should preserve evidence including:
 
 - screenshots
 - execution actions
@@ -326,7 +337,7 @@ Recording is not inherently a Playwright concern.
 
 ## Failure model
 
-The eventual result vocabulary is:
+The eventual diagnosis vocabulary is:
 
 ```text
 passed
@@ -473,7 +484,10 @@ Development should progress roughly in this order:
 
 Do not skip ahead simply because a later feature is interesting.
 
-The current codebase is allowed to evolve as experience reveals better boundaries. When a durable architectural decision changes, update this document.
+The current local web runner now covers scenario execution, deterministic verification,
+and restricted agent integration. Next work can build on evidence and diagnosis when
+the current run statuses prove insufficient. The codebase may evolve as experience
+reveals better boundaries. When a durable architectural decision changes, update this document.
 
 ## Definition of done for development work
 

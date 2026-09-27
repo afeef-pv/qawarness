@@ -1,6 +1,20 @@
 export interface LLMMessage {
-  role: "system" | "user" | "assistant";
+  role: "system" | "user" | "assistant" | "tool";
   content: string;
+  toolCalls?: LLMToolCall[];
+  toolCallId?: string;
+}
+
+export interface LLMTool {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+}
+
+export interface LLMToolCall {
+  id: string;
+  name: string;
+  arguments: unknown;
 }
 
 export interface LLMRequest {
@@ -8,12 +22,14 @@ export interface LLMRequest {
   temperature?: number;
   maxTokens?: number;
   responseFormat?: { type: "text" | "json" };
+  tools?: LLMTool[];
 }
 
 export interface LLMResponse {
   provider: string;
   model: string;
   text: string;
+  toolCalls?: LLMToolCall[];
   finishReason?: string;
   usage?: {
     inputTokens?: number;

@@ -1,0 +1,9 @@
+name: example-local
+startUrl: http://localhost:3000/
+instruction: |
+  Open the local application's home page and inspect it.
+  Finish when the page is visible.
+proof:
+  - type: url_equals
+    value: http://localhost:3000/
+maxSteps: 10

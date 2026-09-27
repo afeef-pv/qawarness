@@ -5,6 +5,7 @@ export interface QAElement {
   role?: string;
   text?: string;
   label?: string;
+  value?: string;
 
   visible: boolean;
   enabled: boolean;
@@ -36,6 +37,7 @@ export interface QAEnvironment {
   navigate(url: string): Promise<void>;
 
   observe(): Promise<QAObservation>;
+  inspect(target: import("./actions").SemanticTarget): Promise<{ count: number; elements: QAElement[] }>;
 
   screenshot(path: string): Promise<void>;
 

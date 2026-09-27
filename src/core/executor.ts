@@ -29,6 +29,18 @@ export class QAExecutor {
     if (action.type === "done") {
       record.status = "done";
       this.completed = true;
+    } else if (action.type === "inspect") {
+      try {
+        record.inspection = await this.environment.inspect(action.target);
+        record.observation = await this.environment.observe();
+      } catch (error) {
+        record.status = "failed";
+        record.error = error instanceof Error ? error.message : String(error);
+        try { record.observation = await this.environment.observe(); } catch { /* unavailable environment */ }
+        record.durationMs = performance.now() - start;
+        await this.recorder.append(record);
+        if (!record.observation) throw error;
+      }
     } else {
       try {
         const outcome = await this.environment.act(action);

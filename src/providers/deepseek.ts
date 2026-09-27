@@ -56,7 +56,12 @@ export class DeepSeekProvider implements LLMProvider {
         },
         body: JSON.stringify({
           model: this.model,
-          messages: request.messages,
+          messages: request.messages.map((message) => message.role === "tool"
+            ? { role: "tool", tool_call_id: message.toolCallId, content: message.content }
+            : message.toolCalls
+              ? { role: "assistant", content: message.content || null, tool_calls: message.toolCalls.map((call) => ({ id: call.id, type: "function", function: { name: call.name, arguments: JSON.stringify(call.arguments) } })) }
+              : { role: message.role, content: message.content }),
+          ...(request.tools ? { thinking: { type: "disabled" }, tools: request.tools.map((tool) => ({ type: "function", function: { name: tool.name, description: tool.description, parameters: tool.inputSchema } })), tool_choice: "required", parallel_tool_calls: false } : {}),
           ...(request.temperature === undefined ? {} : { temperature: request.temperature }),
           ...(request.maxTokens === undefined ? {} : { max_tokens: request.maxTokens }),
           ...(request.responseFormat === undefined ? {} : {
@@ -93,14 +98,27 @@ export class DeepSeekProvider implements LLMProvider {
 
     const choice = data.choices[0];
     const message = choice.message;
-    if (!isObject(message) || typeof message.content !== "string" || !message.content.trim()) {
+    if (!isObject(message)) {
+      throw new LLMError("DeepSeek returned a malformed or empty response", "malformed_response", this.name);
+    }
+    const calls = message.tool_calls;
+    if (calls !== undefined && (!Array.isArray(calls) || calls.some((call) => !isObject(call) || typeof call.id !== "string" || !isObject(call.function) || typeof call.function.name !== "string" || typeof call.function.arguments !== "string"))) {
+      throw new LLMError("DeepSeek returned malformed tool calls", "malformed_response", this.name);
+    }
+    if ((typeof message.content !== "string" || !message.content.trim()) && (!Array.isArray(calls) || !calls.length)) {
       throw new LLMError("DeepSeek returned a malformed or empty response", "malformed_response", this.name);
     }
     const usage = isObject(data.usage) ? data.usage : undefined;
     return {
       provider: this.name,
       model: data.model,
-      text: message.content,
+      text: typeof message.content === "string" ? message.content : "",
+      ...(Array.isArray(calls) ? { toolCalls: calls.map((call) => {
+        const tool = call as { id: string; function: { name: string; arguments: string } };
+        let args: unknown;
+        try { args = JSON.parse(tool.function.arguments); } catch { args = tool.function.arguments; }
+        return { id: tool.id, name: tool.function.name, arguments: args };
+      }) } : {}),
       ...(typeof choice.finish_reason === "string" ? { finishReason: choice.finish_reason } : {}),
       ...(usage ? { usage: {
         ...(typeof usage.prompt_tokens === "number" ? { inputTokens: usage.prompt_tokens } : {}),

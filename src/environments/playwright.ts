@@ -17,6 +17,7 @@ import type {
 } from "../core/environment";
 
 export class PlaywrightEnvironment implements QAEnvironment {
+  constructor(private readonly options: { headed?: boolean; tracePath?: string } = {}) {}
   private browser?: Browser;
   private context?: BrowserContext;
   private page?: Page;
@@ -31,10 +32,11 @@ export class PlaywrightEnvironment implements QAEnvironment {
 
     try {
       this.browser = await chromium.launch({
-        headless: true,
+        headless: !this.options.headed,
       });
 
       this.context = await this.browser.newContext();
+      if (this.options.tracePath) await this.context.tracing.start({ screenshots: true, snapshots: true });
 
       this.page = await this.context.newPage();
 
@@ -163,6 +165,24 @@ export class PlaywrightEnvironment implements QAEnvironment {
     this.lastScreenshotPath = path;
   }
 
+  async inspect(target: SemanticTarget): Promise<{ count: number; elements: QAElement[] }> {
+    const locator = this.resolveTarget(this.requirePage(), target);
+    const count = await locator.count();
+    const elements: QAElement[] = [];
+    for (let i = 0; i < Math.min(count, 20); i++) {
+      const item = locator.nth(i);
+      elements.push({
+        role: await item.getAttribute("role") ?? (target.by === "role" ? target.role : undefined),
+        label: await item.getAttribute("aria-label") ?? (target.by === "label" ? target.label : undefined),
+        text: (await item.innerText().catch(() => "")).slice(0, 1000),
+        value: await item.inputValue().catch(() => undefined),
+        visible: await item.isVisible(),
+        enabled: await item.isEnabled(),
+      });
+    }
+    return { count, elements };
+  }
+
   async close(): Promise<void> {
     const context = this.context;
     const browser = this.browser;
@@ -173,6 +193,10 @@ export class PlaywrightEnvironment implements QAEnvironment {
 
     try {
       if (context) {
+        if (this.options.tracePath) {
+          await mkdir(dirname(this.options.tracePath), { recursive: true });
+          await context.tracing.stop({ path: this.options.tracePath });
+        }
         await context.close();
       }
     } finally {
@@ -219,6 +243,9 @@ export class PlaywrightEnvironment implements QAEnvironment {
 
     page.on("pageerror", (error) => {
       this.errors.push(`pageerror: ${error.message}`);
+    });
+    page.on("requestfailed", (request) => {
+      this.errors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ""}`);
     });
   }
 

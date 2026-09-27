@@ -4,6 +4,19 @@ import { LLMError } from "../core/llm/provider";
 import { DeepSeekProvider } from "./deepseek";
 
 describe("DeepSeekProvider", () => {
+  test("translates tool calls and tool results through the neutral contract", async () => {
+    let payload: Record<string, unknown> | undefined;
+    const provider = new DeepSeekProvider({ apiKey: "test-key", fetch: async (_url, init) => {
+      payload = JSON.parse(String(init?.body));
+      return Response.json({ model: "deepseek-flash", choices: [{ message: { content: null, tool_calls: [{ id: "call-1", type: "function", function: { name: "click", arguments: '{"target":{"by":"text","text":"Go"}}' } }] }, finish_reason: "tool_calls" }] });
+    } });
+    const response = await provider.generate({ messages: [{ role: "user", content: "go" }], tools: [{ name: "click", description: "Click", inputSchema: { type: "object" } }] });
+    expect(payload?.thinking).toEqual({ type: "disabled" });
+    expect(payload?.tool_choice).toBe("required");
+    expect(response.toolCalls).toEqual([{ id: "call-1", name: "click", arguments: { target: { by: "text", text: "Go" } } }]);
+    await provider.generate({ messages: [{ role: "assistant", content: "", toolCalls: response.toolCalls }, { role: "tool", toolCallId: "call-1", content: "ok" }], tools: [{ name: "click", description: "Click", inputSchema: { type: "object" } }] });
+    expect(payload?.messages).toEqual([{ role: "assistant", content: null, tool_calls: [{ id: "call-1", type: "function", function: { name: "click", arguments: '{"target":{"by":"text","text":"Go"}}' } }] }, { role: "tool", tool_call_id: "call-1", content: "ok" }]);
+  });
   test("translates JSON mode and normalizes a successful response", async () => {
     let payload: Record<string, unknown> | undefined;
     const provider = new DeepSeekProvider({

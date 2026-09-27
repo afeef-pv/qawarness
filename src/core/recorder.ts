@@ -12,6 +12,7 @@ export interface ExecutionRecord {
   status: "succeeded" | "failed" | "done";
   error?: string;
   observation?: QAObservation;
+  inspection?: { count: number; elements: import("./environment").QAElement[] };
 }
 
 export class JsonlRecorder {

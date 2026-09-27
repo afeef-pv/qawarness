@@ -14,7 +14,7 @@ export type QAAction =
   | { type: "scroll"; deltaY: number; deltaX?: number }
   | { type: "screenshot"; path: string };
 
-export type QAExecutionAction = QAAction | { type: "done"; reason: string };
+export type QAExecutionAction = QAAction | { type: "inspect"; target: SemanticTarget } | { type: "done"; reason: string };
 
 export type QAActionOutcome =
   | { success: true }
