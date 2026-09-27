@@ -31,14 +31,14 @@ export function parseAgentAction(name: string, v: unknown): QAExecutionAction {
   throw new Error(`invalid arguments for ${name}`);
 }
 export function summarizeObservation(o: QAObservation): string {
-  const elements = o.elements.filter(e => e.visible).slice(0, 80).map(e => `[${e.role ?? "element"}] ${JSON.stringify((e.label ?? e.text ?? "").slice(0, 120))}${e.id ? ` id=${e.id}` : ""}${e.enabled ? "" : " disabled"}`).join("\n");
+  const elements = o.elements.filter(e => e.visible).slice(0, 80).map(e => `[${e.role ?? "element"}] ${JSON.stringify((e.label ?? e.text ?? "").replace(/\s+/g, " ").trim().slice(0, 120))}${e.id ? ` id=${e.id}` : ""}${e.enabled ? "" : " disabled"}`).join("\n");
   return `URL: ${(o.location.url ?? "").slice(0, 1000)}\nTitle: ${(o.location.title ?? "").slice(0, 300)}\nVisible text:\n${o.text.slice(0, 8000)}\nInteractive elements:\n${elements}\nErrors:\n${o.errors.slice(-10).map(error => error.slice(0, 500)).join("\n")}`;
 }
 export interface AgentResult { status: "done" | "max_steps" | "agent_protocol_error"; completionReason?: string; steps: number; finalObservation: QAObservation }
 export async function runAgent(scenario: QAScenario, environment: QAEnvironment, provider: LLMProvider, executor: QAExecutor): Promise<AgentResult> {
   let observation = await environment.observe();
   const messages: LLMMessage[] = [
-    { role: "system", content: "You execute a QA task in a web app. Use only one provided tool per turn. Prefer role/name, then label, text, testId, CSS, coordinates. Inspect before guessing. Recover from ordinary action failures. Call done when you believe the task is complete; prose is not completion. Avoid unnecessary actions." },
+    { role: "system", content: "You execute a QA task in a web app. Use only one provided tool per turn. Prefer role/name, then label, text, testId, CSS, coordinates. For role/name, use the complete observed name, including symbols. Inspect before guessing. Recover from ordinary action failures. Call done when you believe the task is complete; prose is not completion. Avoid unnecessary actions." },
     { role: "user", content: `Instruction:\n${scenario.instruction}\n\nCurrent state:\n${summarizeObservation(observation)}` },
   ];
   let steps = 0;

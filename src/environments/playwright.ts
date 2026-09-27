@@ -39,6 +39,7 @@ export class PlaywrightEnvironment implements QAEnvironment {
       if (this.options.tracePath) await this.context.tracing.start({ screenshots: true, snapshots: true });
 
       this.page = await this.context.newPage();
+      this.page.setDefaultTimeout(5_000);
 
       this.attachDiagnostics(this.page);
     } catch (error) {
