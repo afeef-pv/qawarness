@@ -3,12 +3,14 @@ import { join } from "node:path";
 import { runAgent } from "./agent";
 import { QAExecutor } from "./executor";
 import type { QAEnvironment, QAObservation } from "./environment";
-import type { LLMProvider } from "./llm/provider";
+import { LLMError, type LLMProvider } from "./llm/provider";
 import { JsonlRecorder } from "./recorder";
+import type { ExecutionRecord } from "./recorder";
+import { reviewJudgeProof } from "./reviewer";
 import type { QAScenario } from "./scenario";
 import { redactScenario, type RunStore } from "./run-store";
 import { verifyProof, type ProofResult } from "./verifier";
-export type RunStatus = "passed" | "verification_failed" | "max_steps" | "agent_protocol_error" | "provider_failure" | "harness_failure";
+export type RunStatus = "passed" | "verification_failed" | "max_steps" | "agent_protocol_error" | "reviewer_protocol_error" | "provider_failure" | "harness_failure";
 export interface RunReport { runId: string; scenario: QAScenario; startedAt: string; finishedAt: string; result: RunStatus; steps: number; completionReason?: string; proofResults: ProofResult[]; finalObservation?: QAObservation; errors: string[]; artifacts: Record<string, string> }
 export interface RunOptions { store?: RunStore; source?: { type: "file"; path: string }; agentModel?: string; backend?: string }
 export async function runScenario(scenario: QAScenario, provider: LLMProvider, environment: QAEnvironment, runDirectory: string, options: RunOptions = {}): Promise<RunReport> {
@@ -28,6 +30,8 @@ export async function runScenario(scenario: QAScenario, provider: LLMProvider, e
   let executionError: unknown;
   let persistenceError: unknown;
   let recordedSteps = 0;
+  let reviewing = false;
+  const history: ExecutionRecord[] = [];
   try {
     await mkdir(runDirectory, { recursive: true });
     await writeFile(artifacts.actions, "");
@@ -36,6 +40,7 @@ export async function runScenario(scenario: QAScenario, provider: LLMProvider, e
     const result = await runAgent(scenario, environment, provider, new QAExecutor(environment, new JsonlRecorder(artifacts.actions),
       async record => {
         recordedSteps = record.sequence;
+        history.push(record);
         if (options.store) try { await options.store.appendStep(runId, record); } catch (error) {
           persistenceError = new Error("MongoDB step persistence failed", { cause: error });
           throw persistenceError;
@@ -45,15 +50,24 @@ export async function runScenario(scenario: QAScenario, provider: LLMProvider, e
     report.completionReason = result.completionReason;
     report.result = result.status === "done" ? "verification_failed" : result.status;
     if (result.status === "done") {
-      const verified = await verifyProof(scenario.proof, environment, await environment.observe());
-      report.proofResults = verified.results;
-      report.result = verified.passed ? "passed" : "verification_failed";
+      const observation = await environment.observe();
+      const deterministic = await verifyProof(scenario.proof.filter(proof => proof.type !== "judge"), environment, observation);
+      const deterministicResults = deterministic.results[Symbol.iterator]();
+      for (const proof of scenario.proof) {
+        if (proof.type === "judge") reviewing = true;
+        report.proofResults.push(proof.type === "judge"
+          ? await reviewJudgeProof(proof, scenario.instruction, observation, history, provider)
+          : deterministicResults.next().value!);
+        reviewing = false;
+      }
+      report.result = report.proofResults.every(proof => proof.passed) ? "passed" : "verification_failed";
     }
   } catch (error) {
     executionError = error;
     report.steps = recordedSteps;
     report.errors.push(error instanceof Error ? error.message : String(error));
-    report.result = error instanceof Error && error.name === "LLMError" ? "provider_failure" : "harness_failure";
+    report.result = reviewing && error instanceof LLMError && error.kind === "malformed_response" ? "reviewer_protocol_error"
+      : error instanceof LLMError ? "provider_failure" : "harness_failure";
   } finally {
     try { await environment.screenshot(artifacts.screenshot); } catch (error) { report.errors.push(`screenshot: ${String(error)}`); }
     try { report.finalObservation = await environment.observe(); await writeFile(artifacts.observation, JSON.stringify(report.finalObservation, null, 2)); } catch (error) { report.errors.push(`observation: ${String(error)}`); }

@@ -269,6 +269,15 @@ eventual product-versus-agent failure diagnosis taxonomy.
 
 Do not let the execution agent's belief substitute for proof.
 
+`judge` is a first-class proof type whose `text` is a natural-language verification
+criterion. Prefer deterministic proof when a condition can be expressed reliably.
+The execution agent never receives proof. After `done`, deterministic proofs go to
+the deterministic verifier and `judge` proofs go to the reviewer. The reviewer uses
+the configured `LLMProvider` and bounded textual evidence. Its result is
+`satisfied`, `not_satisfied`, or `inconclusive`; only `satisfied` passes. A failed
+judgment leaves the run at `verification_failed` and does not classify product versus
+agent failure. Jev and visual evidence remain future extensions.
+
 ## Model responsibilities
 
 Model responsibilities stay narrow.

@@ -6,4 +6,6 @@ instruction: |
 proof:
   - type: url_equals
     value: http://localhost:3000/
+  - type: judge
+    text: The final observation shows that the local application home page is visible.
 maxSteps: 10

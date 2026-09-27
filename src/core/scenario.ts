@@ -6,7 +6,8 @@ export type QAProof =
   | { type: "url_equals" | "url_contains"; value: string }
   | { type: "text_visible" | "text_not_visible"; text: string }
   | { type: "element_visible" | "element_not_visible"; target: SemanticTarget }
-  | { type: "element_text" | "element_value"; target: SemanticTarget; equals: string };
+  | { type: "element_text" | "element_value"; target: SemanticTarget; equals: string }
+  | { type: "judge"; text: string };
 export interface QAScenario { name: string; startUrl: string; instruction: string; proof: QAProof[]; maxSteps: number }
 export const object = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const str = (v: unknown): v is string => typeof v === "string" && !!v.trim();
@@ -32,6 +33,7 @@ export function parseScenario(v: unknown): QAScenario {
     switch (p.type) {
       case "url_equals": case "url_contains": if (str(p.value)) return { type: p.type, value: p.value }; break;
       case "text_visible": case "text_not_visible": if (str(p.text)) return { type: p.type, text: p.text }; break;
+      case "judge": if (str(p.text)) return { type: "judge", text: p.text }; break;
       case "element_visible": case "element_not_visible": return { type: p.type, target: parseTarget(p.target) };
       case "element_text": case "element_value": if (typeof p.equals === "string") return { type: p.type, target: parseTarget(p.target), equals: p.equals }; break;
     }

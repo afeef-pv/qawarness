@@ -19,7 +19,7 @@ try {
     const report = await runScenario(scenario, provider, new PlaywrightEnvironment({ headed: args.includes("--headed"), tracePath: join(directory, "trace.zip") }), directory,
       { store: mongo?.store, source: { type: "file", path: args[0] }, agentModel: Bun.env.DEEPSEEK_MODEL || "deepseek-flash", backend: "playwright" });
     console.log(`Scenario: ${scenario.name}\nRun: ${runId}\nResult: ${report.result.toUpperCase()}\nSteps: ${report.steps}\nArtifacts: ${directory}\nPersistence: ${mongo ? "MongoDB" : "filesystem"}`);
-    for (const proof of report.proofResults.filter(p => !p.passed)) console.log(`Failed proof: ${JSON.stringify(proof.proof)}`);
+    for (const proof of report.proofResults.filter(p => !p.passed)) console.log(`Failed proof: ${JSON.stringify(proof.proof)}${"reason" in proof ? ` — ${proof.status}: ${proof.reason}` : ""}`);
     if (report.errors.length && report.result !== "passed") console.error(report.errors[0]);
     process.exitCode = report.result === "passed" ? 0 : 1;
   } finally { await mongo?.client.close(); }
