@@ -41,6 +41,22 @@ QAEnvironment
 
 Only Playwright is required initially.
 
+## LLM provider boundary
+
+The agent layer must depend on the provider-neutral `LLMProvider` contract. Provider
+adapters translate requests and responses at the API boundary; DeepSeek is the first
+adapter, not a permanent dependency of the agent or QA layers.
+
+```text
+Agent → LLMProvider → configured provider
+Agent → QAEnvironment → configured execution backend
+```
+
+The agent should remain independent of both the LLM vendor and the QA execution
+platform. Provider integration and QA execution remain separate until the agent layer
+connects them. Keep credentials in environment configuration and network smoke checks
+explicit because they require an external service.
+
 ## Toolchain
 
 Use:
@@ -428,26 +444,31 @@ Development should progress roughly in this order:
    execution recording
    explicit done signal
 
-3. Scenario execution
+3. LLM provider boundary
+   provider-neutral request and response types
+   DeepSeek adapter
+   explicit network smoke check
+
+4. Scenario execution
    scenario representation
    instruction vs proof
    max-step handling
    deterministic runner
 
-4. Verification
+5. Verification
    deterministic assertions first
    structured proof evaluation
    evidence-based completion
 
-5. Model integration
+6. Agent integration
    primary planning/navigation model
    restricted semantic tools
 
-6. Narrow Jev judgments
+7. Narrow Jev judgments
 
-7. Diagnosis and final classification
+8. Diagnosis and final classification
 
-8. React Native/mobile environments
+9. React Native/mobile environments
 ```
 
 Do not skip ahead simply because a later feature is interesting.

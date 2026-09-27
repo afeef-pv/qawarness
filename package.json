@@ -5,6 +5,8 @@
   "scripts": {
     "smoke": "bun run src/smoke.ts",
     "action-smoke": "bun run src/action-smoke.ts",
+    "llm:smoke": "bun run src/llm-smoke.ts",
+    "test": "bun test",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
