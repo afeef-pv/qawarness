@@ -1,6 +1,7 @@
 import type { QAExecutionAction } from "./actions";
 import type { QAEnvironment } from "./environment";
 import type { ExecutionRecord, JsonlRecorder } from "./recorder";
+import { redactRecord } from "./recorder";
 
 export class QAExecutor {
   private sequence = 0;
@@ -9,6 +10,7 @@ export class QAExecutor {
   constructor(
     private readonly environment: QAEnvironment,
     private readonly recorder: JsonlRecorder,
+    private readonly onStep?: (record: ExecutionRecord) => Promise<void>,
   ) {}
 
   async execute(action: QAExecutionAction): Promise<ExecutionRecord> {
@@ -38,8 +40,9 @@ export class QAExecutor {
         record.error = error instanceof Error ? error.message : String(error);
         try { record.observation = await this.environment.observe(); } catch { /* unavailable environment */ }
         record.durationMs = performance.now() - start;
-        await this.recorder.append(record);
+        await this.record(record);
         if (!record.observation) throw error;
+        return record;
       }
     } else {
       try {
@@ -54,13 +57,19 @@ export class QAExecutor {
         record.status = "failed";
         record.error = error instanceof Error ? error.message : String(error);
         record.durationMs = performance.now() - start;
-        await this.recorder.append(record);
+        await this.record(record);
         throw error;
       }
     }
 
     record.durationMs = performance.now() - start;
-    await this.recorder.append(record);
+    await this.record(record);
     return record;
+  }
+
+  private async record(record: ExecutionRecord): Promise<void> {
+    const safe = redactRecord(record);
+    await this.recorder.append(safe);
+    await this.onStep?.(safe);
   }
 }

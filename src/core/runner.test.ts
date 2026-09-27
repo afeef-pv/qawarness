@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { parseAgentAction } from "./agent";
 import { parseScenario } from "./scenario";
 import { runScenario } from "./runner";
+import { redactRecord } from "./recorder";
 import { PlaywrightEnvironment } from "../environments/playwright";
 import type { LLMProvider } from "./llm/provider";
 
@@ -12,6 +13,15 @@ test("scenario and model action boundaries reject malformed input", () => {
   expect(() => parseScenario({ name: "x", startUrl: "http://localhost", instruction: "do it", proof: [{ type: "unknown" }] })).toThrow();
   expect(() => parseAgentAction("click", { target: { by: "coordinates", x: "1", y: 2 } })).toThrow();
   expect(() => parseAgentAction("evaluate", { script: "alert(1)" })).toThrow();
+});
+
+test("password input is masked before recording", () => {
+  const record = redactRecord({ sequence: 1, action: { type: "fill", target: { by: "label", label: "Password" }, value: "sample-secret" },
+    startedAt: new Date().toISOString(), durationMs: 1, status: "succeeded", observation: {
+      platform: "web", location: {}, text: "sample-secret", elements: [{ label: "Password", value: "sample-secret", visible: true, enabled: true }], errors: [],
+    } });
+  expect(JSON.stringify(record)).not.toContain("sample-secret");
+  expect(record.action).toEqual({ type: "fill", target: { by: "label", label: "Password" }, value: "[redacted]" });
 });
 
 test("runner executes one action, done and independent proof", async () => {

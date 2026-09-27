@@ -3,6 +3,7 @@ import { loadScenario } from "./core/scenario";
 import { runScenario } from "./core/runner";
 import { PlaywrightEnvironment } from "./environments/playwright";
 import { createLLMProvider } from "./llm/create-provider";
+import { connectMongoRunStore } from "./persistence/mongo/client";
 const args = Bun.argv.slice(2);
 if (!args[0] || args.some((arg, i) => i > 0 && arg !== "--headed")) {
   console.error("Usage: bun run qa <scenario.yaml> [--headed]");
@@ -13,11 +14,15 @@ try {
   const provider = createLLMProvider();
   const runId = `${new Date().toISOString().replaceAll(":", "-").replaceAll(".", "-")}-${scenario.name.replace(/[^a-zA-Z0-9_-]/g, "-")}-${crypto.randomUUID().slice(0, 8)}`;
   const directory = join("runs", runId);
-  const report = await runScenario(scenario, provider, new PlaywrightEnvironment({ headed: args.includes("--headed"), tracePath: join(directory, "trace.zip") }), directory);
-  console.log(`Scenario: ${scenario.name}\nResult: ${report.result.toUpperCase()}\nSteps: ${report.steps}\nArtifacts: ${directory}`);
-  for (const proof of report.proofResults.filter(p => !p.passed)) console.log(`Failed proof: ${JSON.stringify(proof.proof)}`);
-  if (report.errors.length && report.result !== "passed") console.error(report.errors[0]);
-  process.exitCode = report.result === "passed" ? 0 : 1;
+  const mongo = Bun.env.MONGODB_URI ? await connectMongoRunStore(Bun.env.MONGODB_URI, Bun.env.MONGODB_DB || "qawarness") : undefined;
+  try {
+    const report = await runScenario(scenario, provider, new PlaywrightEnvironment({ headed: args.includes("--headed"), tracePath: join(directory, "trace.zip") }), directory,
+      { store: mongo?.store, source: { type: "file", path: args[0] }, agentModel: Bun.env.DEEPSEEK_MODEL || "deepseek-flash", backend: "playwright" });
+    console.log(`Scenario: ${scenario.name}\nRun: ${runId}\nResult: ${report.result.toUpperCase()}\nSteps: ${report.steps}\nArtifacts: ${directory}\nPersistence: ${mongo ? "MongoDB" : "filesystem"}`);
+    for (const proof of report.proofResults.filter(p => !p.passed)) console.log(`Failed proof: ${JSON.stringify(proof.proof)}`);
+    if (report.errors.length && report.result !== "passed") console.error(report.errors[0]);
+    process.exitCode = report.result === "passed" ? 0 : 1;
+  } finally { await mongo?.client.close(); }
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 2;

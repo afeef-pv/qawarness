@@ -176,7 +176,8 @@ export class PlaywrightEnvironment implements QAEnvironment {
         role: await item.getAttribute("role") ?? (target.by === "role" ? target.role : undefined),
         label: await item.getAttribute("aria-label") ?? (target.by === "label" ? target.label : undefined),
         text: (await item.innerText().catch(() => "")).slice(0, 1000),
-        value: await item.inputValue().catch(() => undefined),
+        value: await item.evaluate(node => node instanceof HTMLInputElement && node.type === "password").catch(() => false)
+          ? "[redacted]" : await item.inputValue().catch(() => undefined),
         visible: await item.isVisible(),
         enabled: await item.isEnabled(),
       });
@@ -354,7 +355,8 @@ export class PlaywrightEnvironment implements QAEnvironment {
             element instanceof HTMLTextAreaElement ||
             element instanceof HTMLSelectElement
           ) {
-            text = element.value?.trim() || undefined;
+            text = element instanceof HTMLInputElement && element.type === "password"
+              ? "[redacted]" : element.value?.trim() || undefined;
           } else {
             text = element.innerText?.trim() || undefined;
           }

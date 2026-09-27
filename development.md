@@ -335,6 +335,36 @@ Recording is not the responsibility of the future LLM.
 
 Recording is not inherently a Playwright concern.
 
+## Durable run history
+
+MongoDB is the structured history store. The runner accesses it through a narrow
+`RunStore` boundary; the agent, verifier, provider, and environment do not depend on
+MongoDB. The filesystem remains the evidence store. Screenshots and Playwright traces
+stay in `runs/<run-id>/`, with paths referenced from MongoDB. JSONL and report files
+remain portable without database access.
+
+Scenario definitions are versioned and effectively append-only. The same normalized
+content reuses its version; changed content creates a new version. Every run references
+its definition and embeds a snapshot. Steps are separate documents written immediately
+after execution. A running record without a final status indicates interruption. The
+execution result is retained if later diagnosis is added; full model transcripts and
+schema migration machinery are deferred until needed. With MongoDB enabled, a failed
+initial write prevents execution, and a later write failure is surfaced after filesystem
+evidence and run finalization are attempted.
+
+For local MongoDB, start `docker run -d --name qawarness-mongo -p 27017:27017 mongo:8`
+or use any reachable MongoDB server. Set `MONGODB_URI=mongodb://localhost:27017` and
+`MONGODB_DB=qawarness`, then run `bun run db:init`. Without `MONGODB_URI`, the QA CLI
+uses filesystem-only mode. Future schema changes may require explicit migrations.
+
+Useful `mongosh qawarness` queries:
+
+```js
+db.runs.find({ "scenario.name": "sign-in" }).sort({ startedAt: -1 }).limit(10)
+db.run_steps.find({ runId: "<run-id>" }).sort({ sequence: 1 })
+db.scenario_definitions.find({ name: "sign-in" }).sort({ version: 1 })
+```
+
 ## Failure model
 
 The eventual diagnosis vocabulary is:

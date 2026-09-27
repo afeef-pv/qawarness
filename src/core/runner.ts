@@ -6,19 +6,41 @@ import type { QAEnvironment, QAObservation } from "./environment";
 import type { LLMProvider } from "./llm/provider";
 import { JsonlRecorder } from "./recorder";
 import type { QAScenario } from "./scenario";
+import { redactScenario, type RunStore } from "./run-store";
 import { verifyProof, type ProofResult } from "./verifier";
 export type RunStatus = "passed" | "verification_failed" | "max_steps" | "agent_protocol_error" | "provider_failure" | "harness_failure";
 export interface RunReport { runId: string; scenario: QAScenario; startedAt: string; finishedAt: string; result: RunStatus; steps: number; completionReason?: string; proofResults: ProofResult[]; finalObservation?: QAObservation; errors: string[]; artifacts: Record<string, string> }
-export async function runScenario(scenario: QAScenario, provider: LLMProvider, environment: QAEnvironment, runDirectory: string): Promise<RunReport> {
-  await mkdir(runDirectory, { recursive: true });
+export interface RunOptions { store?: RunStore; source?: { type: "file"; path: string }; agentModel?: string; backend?: string }
+export async function runScenario(scenario: QAScenario, provider: LLMProvider, environment: QAEnvironment, runDirectory: string, options: RunOptions = {}): Promise<RunReport> {
   const runId = runDirectory.split("/").at(-1) ?? runDirectory;
   const artifacts = { actions: join(runDirectory, "actions.jsonl"), report: join(runDirectory, "report.json"), observation: join(runDirectory, "final-observation.json"), screenshot: join(runDirectory, "final.png"), trace: join(runDirectory, "trace.zip") };
-  await writeFile(artifacts.actions, "");
-  const report: RunReport = { runId, scenario, startedAt: new Date().toISOString(), finishedAt: "", result: "harness_failure", steps: 0, proofResults: [], errors: [], artifacts };
+  const safeScenario = redactScenario(scenario);
+  const report: RunReport = { runId, scenario: safeScenario, startedAt: new Date().toISOString(), finishedAt: "", result: "harness_failure", steps: 0, proofResults: [], errors: [], artifacts };
+  if (options.store) {
+    try {
+      const definition = await options.store.saveScenarioDefinition(scenario, options.source);
+      await options.store.createRun({ id: runId, scenario: { definitionId: definition.id, name: scenario.name, version: definition.version }, scenarioSnapshot: {
+        startUrl: safeScenario.startUrl, instruction: safeScenario.instruction, proof: safeScenario.proof, maxSteps: safeScenario.maxSteps,
+      }, status: "running", startedAt: new Date(report.startedAt), agent: { provider: provider.name, model: options.agentModel ?? "unknown" },
+        environment: { platform: "web", backend: options.backend ?? "unknown", startUrl: scenario.startUrl }, stepCount: 0, artifacts });
+    } catch (error) { throw new Error("MongoDB run initialization failed", { cause: error }); }
+  }
+  let executionError: unknown;
+  let persistenceError: unknown;
+  let recordedSteps = 0;
   try {
+    await mkdir(runDirectory, { recursive: true });
+    await writeFile(artifacts.actions, "");
     await environment.start();
     await environment.navigate(scenario.startUrl);
-    const result = await runAgent(scenario, environment, provider, new QAExecutor(environment, new JsonlRecorder(artifacts.actions)));
+    const result = await runAgent(scenario, environment, provider, new QAExecutor(environment, new JsonlRecorder(artifacts.actions),
+      async record => {
+        recordedSteps = record.sequence;
+        if (options.store) try { await options.store.appendStep(runId, record); } catch (error) {
+          persistenceError = new Error("MongoDB step persistence failed", { cause: error });
+          throw persistenceError;
+        }
+      }));
     report.steps = result.steps;
     report.completionReason = result.completionReason;
     report.result = result.status === "done" ? "verification_failed" : result.status;
@@ -28,6 +50,8 @@ export async function runScenario(scenario: QAScenario, provider: LLMProvider, e
       report.result = verified.passed ? "passed" : "verification_failed";
     }
   } catch (error) {
+    executionError = error;
+    report.steps = recordedSteps;
     report.errors.push(error instanceof Error ? error.message : String(error));
     report.result = error instanceof Error && error.name === "LLMError" ? "provider_failure" : "harness_failure";
   } finally {
@@ -36,7 +60,14 @@ export async function runScenario(scenario: QAScenario, provider: LLMProvider, e
     try { await environment.close(); } catch (error) { report.errors.push(`close: ${String(error)}`); }
     report.finishedAt = new Date().toISOString();
     if (report.finalObservation) report.errors.push(...report.finalObservation.errors);
-    await writeFile(artifacts.report, JSON.stringify(report, null, 2));
+    try { await writeFile(artifacts.report, JSON.stringify(report, null, 2)); } catch (error) { executionError ??= error; }
+    if (options.store) {
+      try { await options.store.finishRun(runId, report); } catch (error) {
+        persistenceError ??= new Error("MongoDB run finalization failed", { cause: error });
+      }
+    }
   }
+  if (persistenceError) throw persistenceError;
+  if (executionError && !report.errors.length) throw executionError;
   return report;
 }
