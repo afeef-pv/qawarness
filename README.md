@@ -54,6 +54,9 @@ maxSteps: 20
 maxDuration: 90m
 ```
 
+Save this example as `scenarios/sign-in.yaml`. Scenario files are local test inputs
+and are ignored by Git.
+
 Run it:
 
 ```bash

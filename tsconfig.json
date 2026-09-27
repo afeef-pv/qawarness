@@ -3,9 +3,10 @@
     "lib": ["ESNext", "DOM"],
     "target": "ESNext",
     "module": "Preserve",
+    "jsx": "react-jsx",
     "moduleDetection": "force",
 
-    "types": ["bun"],
+    "types": ["bun", "vite/client"],
 
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
@@ -17,5 +18,5 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedIndexedAccess": true
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts", "apps/dashboard/src/**/*.ts", "apps/dashboard/src/**/*.tsx", "apps/dashboard/vite.config.ts"]
 }

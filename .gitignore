@@ -5,6 +5,7 @@ node_modules
 out
 dist
 runs/
+scenarios/
 *.tgz
 
 # code coverage

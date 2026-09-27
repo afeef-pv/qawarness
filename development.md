@@ -234,6 +234,7 @@ the failed step. A `done` record is a completion signal, never a verification re
 ## Scenario philosophy
 
 Scenario instruction and proof should remain separate.
+Scenario files in `scenarios/` are local test inputs and are ignored by Git.
 
 Conceptually:
 
@@ -371,6 +372,20 @@ execution result is retained if later diagnosis is added; full model transcripts
 schema migration machinery are deferred until needed. With MongoDB enabled, a failed
 initial write prevents execution, and a later write failure is surfaced after filesystem
 evidence and run finalization are attempted.
+
+## Local run dashboard
+
+`bun run dashboard` starts a localhost-only React/Vite observability dashboard at
+`http://127.0.0.1:7331` and a private local API behind its development proxy. The
+dashboard is read-only and reads persisted MongoDB run history through the Mongo run
+store; it does not communicate with the runner, agent, provider, Playwright, or a
+`QAEnvironment`. The filesystem remains the artifact store, with a small allowlisted
+artifact route for files in the selected run directory.
+
+The dashboard uses short polling while a run is active instead of WebSockets, SSE, or
+Mongo change streams. Its run detail view prioritizes the action timeline, normalized
+state, errors, proof results, and captured artifacts. Dashboard UI tests should remain
+small and focus on meaningful API/rendering behavior rather than visual styling.
 
 For local MongoDB, start `docker run -d --name qawarness-mongo -p 27017:27017 mongo:8`
 or use any reachable MongoDB server. Set `MONGODB_URI=mongodb://localhost:27017` and
