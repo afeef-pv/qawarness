@@ -39,6 +39,10 @@ export class MongoRunStore implements RunStore {
     await this.db.collection<RunRecord & { _id: string }>("runs").insertOne({ ...run, _id: run.id });
   }
 
+  async heartbeatRun(runId: string): Promise<void> {
+    await this.db.collection<RunRecord & { _id: string }>("runs").updateOne({ _id: runId, status: "running" }, { $set: { heartbeatAt: new Date() } });
+  }
+
   async appendStep(runId: string, record: ExecutionRecord): Promise<void> {
     const step: RunStepRecord = { ...record, id: `${runId}:${record.sequence}`, runId, finishedAt: new Date(new Date(record.startedAt).getTime() + record.durationMs) };
     await this.db.collection<RunStepRecord & { _id: string }>("run_steps").insertOne({ ...step, _id: step.id });

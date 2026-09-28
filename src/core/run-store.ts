@@ -14,8 +14,9 @@ export interface RunRecord {
   id: string;
   scenario: { definitionId: string; name: string; version: number };
   scenarioSnapshot: Omit<QAScenario, "name">;
-  status: "running" | RunStatus;
+  status: "running" | "interrupted" | RunStatus;
   startedAt: Date;
+  heartbeatAt?: Date;
   finishedAt?: Date;
   agent: { provider: string; model: string };
   environment: { platform: string; backend: string; startUrl: string };
@@ -40,6 +41,7 @@ export interface RunStepRecord extends ExecutionRecord {
 export interface RunStore {
   saveScenarioDefinition(scenario: QAScenario, source?: ScenarioDefinitionRecord["source"]): Promise<ScenarioDefinitionRecord>;
   createRun(run: RunRecord): Promise<void>;
+  heartbeatRun(runId: string): Promise<void>;
   appendStep(runId: string, record: ExecutionRecord): Promise<void>;
   finishRun(runId: string, report: RunReport): Promise<void>;
 }

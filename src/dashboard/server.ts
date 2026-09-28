@@ -7,6 +7,14 @@ const artifactFiles: Record<string, string> = {
   screenshot: "final.png", report: "report.json", actions: "actions.jsonl", initialObservation: "initial-observation.json", observation: "final-observation.json", trace: "trace.zip",
 };
 const runIdPattern = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
+const interruptedGraceMs = 5 * 60_000;
+const heartbeatGraceMs = 2 * 60_000;
+export function dashboardStatus(run: { status: string; startedAt: Date; heartbeatAt?: Date; limits?: { maxDurationMs: number } }, now = Date.now()): string {
+  if (run.status !== "running") return run.status;
+  if (run.heartbeatAt && now - new Date(run.heartbeatAt).getTime() > heartbeatGraceMs) return "interrupted";
+  const maxDurationMs = run.limits?.maxDurationMs ?? 90 * 60_000;
+  return now - new Date(run.startedAt).getTime() > maxDurationMs + interruptedGraceMs ? "interrupted" : "running";
+}
 const text = (value: unknown, limit = 12_000) => typeof value === "string" ? value.slice(0, limit) : value;
 const observation = (value: any) => value ? {
   url: value.location?.url, title: value.location?.title, text: text(value.text),
@@ -20,7 +28,7 @@ function json(value: unknown, status = 200) {
 
 function runSummary(run: any, current = observation(run.finalObservation)) {
   return {
-    runId: run.id ?? run._id, scenario: run.scenario, status: run.status, startedAt: run.startedAt, finishedAt: run.finishedAt,
+    runId: run.id ?? run._id, scenario: run.scenario, status: dashboardStatus(run), startedAt: run.startedAt, finishedAt: run.finishedAt,
     stepCount: run.stepCount, maxSteps: run.limits?.maxSteps, current: current ? { url: current.url, title: current.title } : undefined, agent: run.agent,
   };
 }

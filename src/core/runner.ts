@@ -27,12 +27,18 @@ export async function runScenario(scenario: QAScenario, provider: LLMProvider, e
       await options.store.createRun({ id: runId, scenario: { definitionId: definition.id, name: scenario.name, version: definition.version }, scenarioSnapshot: {
         startUrl: safeScenario.startUrl, instruction: safeScenario.instruction, proof: safeScenario.proof, maxSteps: safeScenario.maxSteps,
         ...(safeScenario.maxDuration ? { maxDuration: safeScenario.maxDuration } : {}),
-      }, status: "running", startedAt: new Date(report.startedAt), agent: { provider: provider.name, model: options.agentModel ?? "unknown" },
+      }, status: "running", startedAt: new Date(report.startedAt), heartbeatAt: new Date(report.startedAt), agent: { provider: provider.name, model: options.agentModel ?? "unknown" },
         environment: { platform: "web", backend: options.backend ?? "unknown", startUrl: scenario.startUrl }, stepCount: 0, limits, context: report.context, artifacts });
     } catch (error) { throw new Error("MongoDB run initialization failed", { cause: error }); }
   }
   let executionError: unknown;
   let persistenceError: unknown;
+  let heartbeatPending = Promise.resolve();
+  const heartbeatTimer = options.store ? setInterval(() => {
+    heartbeatPending = heartbeatPending.then(() => options.store!.heartbeatRun(runId)).catch(error => {
+      persistenceError ??= new Error("MongoDB run heartbeat failed", { cause: error });
+    });
+  }, 30_000) : undefined;
   let recordedSteps = 0;
   let reviewing = false;
   let screenshotCaptured = false;
@@ -97,6 +103,8 @@ export async function runScenario(scenario: QAScenario, provider: LLMProvider, e
       : error instanceof LLMError ? "provider_failure" : "harness_failure";
   } finally {
     clearTimeout(durationTimer);
+    if (heartbeatTimer) clearInterval(heartbeatTimer);
+    await heartbeatPending;
     if (!screenshotCaptured) try { await environment.screenshot(artifacts.screenshot); } catch (error) { report.errors.push(`screenshot: ${String(error)}`); }
     try { report.finalObservation = await environment.observe(); await writeFile(artifacts.observation, JSON.stringify(report.finalObservation, null, 2)); } catch (error) { report.errors.push(`observation: ${String(error)}`); }
     try { await environment.close(); } catch (error) { report.errors.push(`close: ${String(error)}`); }

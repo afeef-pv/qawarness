@@ -407,6 +407,12 @@ artifact route for files in the selected run directory.
 
 The dashboard uses short polling while a run is active instead of WebSockets, SSE, or
 Mongo change streams. Run detail polling continues through finalization and then stops.
+The runner records a MongoDB heartbeat every 30 seconds. The read-only API displays
+a run still stored as `running` as `interrupted` when its heartbeat is more than two
+minutes old. Older records without a heartbeat use the recorded maximum duration
+plus five minutes. This does not assert when or why the process stopped;
+interrupted runs have no known end time or diagnosis. The API does not rewrite
+MongoDB records when deriving this display status.
 Its run detail view prioritizes the action timeline, normalized state, errors, proof
 results, diagnosis, and captured artifacts, including allowlisted step screenshots.
 Dashboard UI tests should remain
