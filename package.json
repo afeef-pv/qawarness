@@ -9,6 +9,7 @@
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "qa": "bun run src/qa.ts",
+    "qa:repeat": "bun run src/repeat.ts",
     "db:init": "bun run src/persistence/mongo/init.ts",
     "dashboard": "bun run src/dashboard/server.ts",
     "dashboard:build": "vite build --config apps/dashboard/vite.config.ts"

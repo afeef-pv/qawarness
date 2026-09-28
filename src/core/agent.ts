@@ -59,7 +59,7 @@ export async function runAgent(scenario: QAScenario, environment: QAEnvironment,
     if (limits.signal.aborted) return { status: "max_duration", steps, finalObservation: observation };
     const calls = response.toolCalls ?? [];
     if (calls.length !== 1) {
-      if (++protocolErrors >= 3) return { status: "agent_protocol_error", steps, finalObservation: observation };
+      if (++protocolErrors >= 3) return { status: "agent_protocol_error", stopReason: "Agent repeatedly failed to call exactly one QA tool.", steps, finalObservation: observation };
       messages.push({ role: "user", content: "Protocol correction: call exactly one QA tool. No prose or multiple tools." });
       continue;
     }
@@ -73,13 +73,13 @@ export async function runAgent(scenario: QAScenario, environment: QAEnvironment,
     } catch (error) {
       result = `Tool error: ${error instanceof Error ? error.message : String(error)}`;
       messages.push({ role: "tool", toolCallId: call.id, content: result });
-      if (++protocolErrors >= 3) return { status: "agent_protocol_error", steps, finalObservation: observation };
+      if (++protocolErrors >= 3) return { status: "agent_protocol_error", stopReason: "Agent repeatedly sent invalid QA tool arguments.", steps, finalObservation: observation };
       continue;
     }
     steps++;
     const record: ExecutionRecord = await executor.execute(action);
     if (limits.signal.aborted) return { status: "max_duration", steps, finalObservation: record.observation ?? observation };
-    if (action.type === "done") return { status: "done", completionReason: action.reason, steps, finalObservation: observation };
+    if (action.type === "done") return { status: "done", completionReason: action.reason, steps, finalObservation: record.observation ?? observation };
     observation = record.observation ?? await environment.observe();
     const actionKey = JSON.stringify(action);
     const state = visibleState(observation);

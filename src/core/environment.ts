@@ -41,6 +41,8 @@ export interface QAEnvironment {
 
   screenshot(path: string): Promise<void>;
 
+  runtimeInfo?(): Promise<{ version?: string; viewport?: { width: number; height: number } }>;
+
   close(): Promise<void>;
 }
 import type { QAAction, QAActionOutcome } from "./actions";

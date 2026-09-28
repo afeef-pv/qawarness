@@ -54,7 +54,7 @@ try {
 
   const done = await executor.execute({ type: "done", reason: "Created customer is visible" });
   assert.equal(done.status, "done");
-  assert.equal(done.observation, undefined);
+  assert.match(done.observation?.text ?? "", /Created Ada/);
   await assert.rejects(executor.execute({ type: "scroll", deltaY: 1 }), /already done/);
 
   const records = (await readFile(logPath, "utf8")).trim().split("\n").map((line) => JSON.parse(line) as ExecutionRecord);

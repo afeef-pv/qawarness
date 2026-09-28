@@ -11,6 +11,8 @@ export interface ExecutionRecord {
   durationMs: number;
   status: "succeeded" | "failed" | "done";
   error?: string;
+  evidenceError?: string;
+  screenshot?: string;
   observation?: QAObservation;
   inspection?: { count: number; elements: import("./environment").QAElement[] };
 }
@@ -26,6 +28,7 @@ export function redactRecord(record: ExecutionRecord): ExecutionRecord {
     ...record,
     action: { ...record.action, value: "[redacted]" },
     ...(record.error ? { error: scrub(record.error) } : {}),
+    ...(record.evidenceError ? { evidenceError: scrub(record.evidenceError) } : {}),
     ...(record.observation ? { observation: {
       ...record.observation,
       text: scrub(record.observation.text),

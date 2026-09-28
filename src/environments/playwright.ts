@@ -35,7 +35,7 @@ export class PlaywrightEnvironment implements QAEnvironment {
         headless: !this.options.headed,
       });
 
-      this.context = await this.browser.newContext();
+      this.context = await this.browser.newContext({ viewport: { width: 1280, height: 720 } });
       if (this.options.tracePath) await this.context.tracing.start({ screenshots: true, snapshots: true });
 
       this.page = await this.context.newPage();
@@ -161,9 +161,14 @@ export class PlaywrightEnvironment implements QAEnvironment {
     await page.screenshot({
       path,
       fullPage: true,
+      mask: [page.locator('input[type="password"], [autocomplete="current-password"], [autocomplete="new-password"]')],
     });
 
     this.lastScreenshotPath = path;
+  }
+
+  async runtimeInfo(): Promise<{ version: string; viewport?: { width: number; height: number } }> {
+    return { version: this.browser?.version() ?? "unknown", viewport: this.page?.viewportSize() ?? undefined };
   }
 
   async inspect(target: SemanticTarget): Promise<{ count: number; elements: QAElement[] }> {

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseAgentAction } from "./agent";
 import { parseScenario } from "./scenario";
+import { repeatScenario } from "./repeat";
 import { scenarioContentHash } from "./run-store";
 import { runScenario } from "./runner";
 import { redactRecord } from "./recorder";
@@ -162,4 +163,77 @@ test("runner stops when duration expires during a provider request", async () =>
     expect(report.errors[0]).toContain("duration limit");
     expect(report.proofResults).toEqual([]);
   } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test("failed actions and done retain screenshots beside their recorded observations", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "qawarness-evidence-"));
+  let turn = 0;
+  const provider: LLMProvider = { name: "fake", async generate() {
+    const calls = [
+      { id: "1", name: "click", arguments: { target: { by: "text", text: "Missing" } } },
+      { id: "2", name: "done", arguments: { reason: "Ready" } },
+    ];
+    return { provider: "fake", model: "fake", text: "", toolCalls: [calls[turn++]!] };
+  } };
+  const environment: QAEnvironment = { ...changingEnvironment(), async act() { return { success: false, error: "Missing target" }; } };
+  try {
+    const scenario = parseScenario({ name: "evidence", startUrl: "http://localhost/", instruction: "Try to click", proof: [{ type: "text_visible", text: "State 0" }] });
+    const report = await runScenario(scenario, provider, environment, directory);
+    const records = (await readFile(join(directory, "actions.jsonl"), "utf8")).trim().split("\n").map(line => JSON.parse(line));
+    expect(report.result).toBe("passed");
+    expect(records.map(record => record.status)).toEqual(["failed", "done"]);
+    expect(records[0].observation.text).toBe("State 0");
+    expect(records[0].screenshot).toBe(join(directory, "steps", "000001-failed.png"));
+    expect(records[1].screenshot).toBe(join(directory, "final.png"));
+    expect(await Bun.file(records[0].screenshot).exists()).toBe(true);
+    expect(await Bun.file(records[1].screenshot).exists()).toBe(true);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test("repeat runs reset a stateful app and temporal proof rejects a preexisting success message", async () => {
+  let saved = false;
+  let resets = 0;
+  const server = Bun.serve({ port: 0, fetch(request) {
+    const url = new URL(request.url);
+    if (url.pathname === "/reset" && request.method === "POST") { saved = false; resets++; return new Response("reset"); }
+    if (url.pathname === "/save" && request.method === "POST") { saved = true; return Response.redirect(new URL("/", request.url), 303); }
+    return new Response(`<form action="/save" method="post"><button>Save</button></form><p>${saved ? "Saved" : "Unsaved"}</p>`, { headers: { "content-type": "text/html" } });
+  } });
+  const directory = await mkdtemp(join(tmpdir(), "qawarness-repeat-"));
+  const scenario = parseScenario({ name: "save", startUrl: `http://localhost:${server.port}/`, instruction: "Click Save", proof: [
+    { type: "text_visible_after_click", target: { by: "role", role: "button", name: "Save" }, text: "Saved" },
+    { type: "no_application_errors" },
+  ] });
+  const run = async (index: number) => {
+    let turn = 0;
+    const provider: LLMProvider = { name: "fake", async generate() {
+      const calls = [
+        { id: "1", name: "click", arguments: { target: { by: "role", role: "button", name: "Save" } } },
+        { id: "2", name: "done", arguments: { reason: "Saved" } },
+      ];
+      return { provider: "fake", model: "fake", text: "", toolCalls: [calls[turn++]!] };
+    } };
+    return runScenario(scenario, provider, new PlaywrightEnvironment(), join(directory, `run-${index}`),
+      { agentModel: "fake", context: { applicationRevision: "app-v1", fixture: "empty-store", harnessRevision: "test" } });
+  };
+  try {
+    const summary = await repeatScenario(scenario, 2, async () => {
+      const response = await fetch(`http://localhost:${server.port}/reset`, { method: "POST" });
+      expect(response.ok).toBe(true);
+    }, run);
+    expect(resets).toBe(2);
+    expect(summary.passRate).toBe(1);
+    expect(summary.diagnosisCounts.passed).toBe(2);
+    expect(summary.context.environment?.version).toBeTruthy();
+    expect(summary.context.environment?.viewport).toEqual({ width: 1280, height: 720 });
+    const persisted = JSON.parse(await readFile(join(directory, "run-0", "report.json"), "utf8"));
+    expect(persisted).toMatchObject({ execution: { status: "done" }, verification: { status: "passed" }, diagnosis: { classification: "passed" },
+      context: { applicationRevision: "app-v1", fixture: "empty-store", modelSettings: { temperature: 0 } } });
+    expect(await Bun.file(join(directory, "run-0", "initial-observation.json")).exists()).toBe(true);
+    const misleading = await run(2);
+    expect(misleading.result).toBe("verification_failed");
+    expect(misleading.verification.status).toBe("failed");
+    expect(misleading.proofResults[0]).toMatchObject({ passed: false, observed: { finalVisible: true } });
+    expect(misleading.diagnosis.classification).toBe("inconclusive");
+  } finally { server.stop(true); await rm(directory, { recursive: true, force: true }); }
 });

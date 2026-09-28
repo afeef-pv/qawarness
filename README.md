@@ -90,6 +90,44 @@ observations, and action history after `done`. The screenshot is sent to the
 configured model provider. The run report records the screenshot path and step
 numbers used as evidence; it does not embed image bytes.
 
+Temporal checks can require an observed transition, rather than matching text that
+was already present on the starting page:
+
+```yaml
+proof:
+  - type: text_visible_after_click
+    target: { by: role, role: button, name: Save }
+    text: Saved
+  - type: no_application_errors
+```
+
+`text_visible_after_click` requires the text to be absent before the matching click,
+appear in a later recorded observation, and remain visible at verification. A failed
+action and the `done` step each keep a screenshot beside their recorded observation.
+The run also records execution, verification, and a separate evidence-backed diagnosis.
+An unsatisfied proof is classified as `inconclusive` until the evidence establishes a
+more specific cause.
+
+## Repeat a scenario
+
+The application must expose a `POST` reset endpoint on the same origin as `startUrl`.
+The endpoint should restore the named fixture before every run and answer 2xx only
+when that reset is complete.
+
+```bash
+bun run qa:repeat scenarios/save.yaml \
+  --count 5 \
+  --reset-url http://localhost:3000/test/reset \
+  --app-revision abc123 \
+  --fixture empty-store
+```
+
+The command runs each attempt in a fresh browser, writes individual run artifacts,
+and saves `runs/repeat-*.json` with the pass rate, average steps and duration, and
+diagnosis counts. It refuses to combine runs whose scenario, application revision,
+fixture, model, or environment context differs. For a single `bun run qa`, optional
+`QA_APP_REVISION` and `QA_FIXTURE` values are recorded with the run.
+
 Runs stop after at most 200 agent steps or 90 minutes. A scenario can request
 lower limits with `maxSteps` and `maxDuration`.
 
@@ -124,8 +162,10 @@ Large artifacts stay on disk.
 runs/<run-id>/
 ├── actions.jsonl
 ├── report.json
+├── initial-observation.json
 ├── final-observation.json
 ├── final.png
+├── steps/<sequence>-failed.png  # when an action fails
 └── trace.zip
 ```
 

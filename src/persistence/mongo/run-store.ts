@@ -48,14 +48,17 @@ export class MongoRunStore implements RunStore {
   async finishRun(runId: string, report: RunReport): Promise<void> {
     const result = await this.db.collection<RunRecord & { _id: string }>("runs").updateOne({ _id: runId, status: "running" }, { $set: {
       status: report.result, finishedAt: new Date(report.finishedAt), stepCount: report.steps,
+      execution: report.execution, verification: report.verification, diagnosis: report.diagnosis,
+      context: report.context,
       completion: { reason: report.completionReason }, proofResults: report.proofResults,
-      finalObservation: report.finalObservation, errors: report.errors, artifacts: report.artifacts,
+      initialObservation: report.initialObservation, finalObservation: report.finalObservation, errors: report.errors, artifacts: report.artifacts,
     } });
     if (result.matchedCount !== 1) throw new Error(`Run ${runId} could not be finalized`);
   }
 
   async getRun(runId: string) { return this.db.collection<RunRecord & { _id: string }>("runs").findOne({ _id: runId }); }
   async getRunSteps(runId: string) { return this.db.collection("run_steps").find({ runId }).sort({ sequence: 1 }).toArray(); }
+  async getRunStep(runId: string, sequence: number) { return this.db.collection("run_steps").findOne({ runId, sequence }); }
   async getLatestRunStep(runId: string) { return this.db.collection("run_steps").find({ runId }).sort({ sequence: -1 }).limit(1).next(); }
   async getLatestRunsForScenario(name: string, limit = 10) { return this.db.collection("runs").find({ "scenario.name": name }).sort({ startedAt: -1 }).limit(limit).toArray(); }
   async listRuns(limit = 100) { return this.db.collection<RunRecord & { _id: string }>("runs").find({}).sort({ startedAt: -1 }).limit(limit).toArray(); }

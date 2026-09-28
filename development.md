@@ -265,8 +265,8 @@ The agent receives only restricted semantic QA tools. Every model tool call is
 untrusted and validated before execution. The loop is observe → one action → observe;
 ordinary action failures return to the agent for recovery. `done` starts independent
 verification and never implies a pass. Deterministic proof checks come before any
-model-based verification. Current run statuses describe execution outcomes, not the
-eventual product-versus-agent failure diagnosis taxonomy.
+model-based verification. The report records execution, verification, and diagnosis
+separately. The existing run status remains available for CLI and history consumers.
 
 The execution loop stops with `stalled` when the same action five times in a row
 leaves the visible normalized state unchanged. This bounds repeated tool-call loops
@@ -285,7 +285,7 @@ Do not let the execution agent's belief substitute for proof.
 criterion. Prefer deterministic proof when a condition can be expressed reliably.
 The execution agent never receives proof. After `done`, deterministic proofs go to
 the deterministic verifier and `judge` proofs go to the reviewer. The reviewer uses
-the configured `LLMProvider` and bounded textual evidence. Its result is
+the configured `LLMProvider` and bounded text and image evidence. Its result is
 `satisfied`, `not_satisfied`, or `inconclusive`; only `satisfied` passes. A failed
 judgment leaves the run at `verification_failed` and does not classify product versus
 agent failure. For a run with `judge` proof, capture the final screenshot before
@@ -293,7 +293,14 @@ verification and send it with bounded action and observation history through the
 provider-neutral image message. The screenshot path and referenced step numbers are
 stored with the judgment; image bytes are not stored in MongoDB. A screenshot failure
 prevents a visual judgment from reporting a pass. This initial visual evidence is the
-final screen, not per-step imagery. Jev remains a future extension.
+final screen. Failed actions and `done` also keep screenshots linked to their step
+records. Jev remains a future extension.
+
+`text_visible_after_click` is a deterministic temporal proof: the text must be absent
+before the matching semantic click, appear in a later recorded observation, and
+remain visible at verification. `no_application_errors` considers the initial,
+intermediate, and final observations so navigation cannot erase an earlier error.
+The initial observation is saved as an artifact for audit.
 
 ## Model responsibilities
 
@@ -341,6 +348,10 @@ Evidence should help answer:
 Do not implement every possible artifact immediately.
 
 Add evidence capabilities when they materially improve diagnosis.
+Screenshot capture is best effort for failed actions and required for visual `judge`
+verification. The Playwright adapter masks standard password inputs in screenshots;
+applications may display other private data, so captured images remain local run
+artifacts and only the final image is sent to the configured judge provider.
 
 ## Recording
 
@@ -373,10 +384,17 @@ Scenario definitions are versioned and effectively append-only. The same normali
 content reuses its version; changed content creates a new version. Every run references
 its definition and embeds a snapshot. Steps are separate documents written immediately
 after execution. A running record without a final status indicates interruption. The
-execution result is retained if later diagnosis is added; full model transcripts and
+execution result is retained alongside diagnosis; full model transcripts and
 schema migration machinery are deferred until needed. With MongoDB enabled, a failed
 initial write prevents execution, and a later write failure is surfaced after filesystem
 evidence and run finalization are attempted.
+
+Every completed run stores its execution and verification states plus a conservative
+diagnosis with evidence references. A failed proof alone is `inconclusive`; an
+uncaught page error failing explicit `no_application_errors` proof establishes
+`product_failure`, repeated invalid tool calls establish `agent_failure`, and known
+provider or harness failures establish `harness_failure`. Record application revision, fixture identity,
+model settings, harness revision, browser version, and viewport when available.
 
 ## Local run dashboard
 
@@ -388,8 +406,10 @@ store; it does not communicate with the runner, agent, provider, Playwright, or 
 artifact route for files in the selected run directory.
 
 The dashboard uses short polling while a run is active instead of WebSockets, SSE, or
-Mongo change streams. Its run detail view prioritizes the action timeline, normalized
-state, errors, proof results, and captured artifacts. Dashboard UI tests should remain
+Mongo change streams. Run detail polling continues through finalization and then stops.
+Its run detail view prioritizes the action timeline, normalized state, errors, proof
+results, diagnosis, and captured artifacts, including allowlisted step screenshots.
+Dashboard UI tests should remain
 small and focus on meaningful API/rendering behavior rather than visual styling.
 
 For local MongoDB, start `docker run -d --name qawarness-mongo -p 27017:27017 mongo:8`
@@ -417,7 +437,8 @@ harness_failure
 inconclusive
 ```
 
-These classifications are intentionally not implemented prematurely.
+Automatic classification is intentionally conservative; an ordinary failed proof
+does not by itself establish `product_failure`.
 
 Rough conceptual meanings:
 
@@ -436,7 +457,14 @@ Rough conceptual meanings:
 `inconclusive`
 : Available evidence is insufficient to assign another result confidently.
 
-Execution and diagnosis should ultimately be distinct layers.
+Execution and diagnosis are distinct report fields. A diagnosis records a reason and
+references to the steps, proofs, errors, and screenshots behind the conclusion.
+
+Repeat runs require an explicit same-origin HTTP reset endpoint and named fixture.
+The reset completes before each fresh browser run. A repeat summary compares only
+matching scenario content and run context; it records pass rate, step and duration
+averages, and diagnosis counts. The CLI does not manage application servers or invent
+fixture state for an application it does not own.
 
 ## Testing philosophy
 
@@ -554,9 +582,9 @@ Development should progress roughly in this order:
 
 Do not skip ahead simply because a later feature is interesting.
 
-The current local web runner now covers scenario execution, deterministic verification,
-and restricted agent integration. Next work can build on evidence and diagnosis when
-the current run statuses prove insufficient. The codebase may evolve as experience
+The current local web runner covers scenario execution, temporal and final-state
+verification, restricted agent integration, linked evidence, conservative diagnosis,
+and controlled local repeats. The codebase may evolve as experience
 reveals better boundaries. When a durable architectural decision changes, update this document.
 
 ## Definition of done for development work

@@ -20,9 +20,14 @@ export interface RunRecord {
   agent: { provider: string; model: string };
   environment: { platform: string; backend: string; startUrl: string };
   stepCount: number;
+  context?: RunReport["context"];
+  execution?: RunReport["execution"];
+  verification?: RunReport["verification"];
+  diagnosis?: RunReport["diagnosis"];
   limits?: RunReport["limits"];
   completion?: { reason?: string };
   proofResults?: RunReport["proofResults"];
+  initialObservation?: RunReport["initialObservation"];
   finalObservation?: RunReport["finalObservation"];
   errors?: string[];
   artifacts?: RunReport["artifacts"];

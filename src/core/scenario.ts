@@ -7,6 +7,8 @@ export type QAProof =
   | { type: "text_visible" | "text_not_visible"; text: string }
   | { type: "element_visible" | "element_not_visible"; target: SemanticTarget }
   | { type: "element_text" | "element_value"; target: SemanticTarget; equals: string }
+  | { type: "text_visible_after_click"; target: SemanticTarget; text: string }
+  | { type: "no_application_errors" }
   | { type: "judge"; text: string };
 export interface QAScenario { name: string; startUrl: string; instruction: string; proof: QAProof[]; maxSteps: number; maxDuration?: string }
 export const object = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -43,6 +45,8 @@ export function parseScenario(v: unknown): QAScenario {
       case "url_equals": case "url_contains": if (str(p.value)) return { type: p.type, value: p.value }; break;
       case "text_visible": case "text_not_visible": if (str(p.text)) return { type: p.type, text: p.text }; break;
       case "judge": if (str(p.text)) return { type: "judge", text: p.text }; break;
+      case "text_visible_after_click": if (str(p.text)) return { type: "text_visible_after_click", target: parseTarget(p.target), text: p.text }; break;
+      case "no_application_errors": return { type: "no_application_errors" };
       case "element_visible": case "element_not_visible": return { type: p.type, target: parseTarget(p.target) };
       case "element_text": case "element_value": if (typeof p.equals === "string") return { type: p.type, target: parseTarget(p.target), equals: p.equals }; break;
     }

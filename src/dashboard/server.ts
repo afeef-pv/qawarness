@@ -4,7 +4,7 @@ import { basename, resolve } from "node:path";
 import { connectMongoRunStore } from "../persistence/mongo/client";
 
 const artifactFiles: Record<string, string> = {
-  screenshot: "final.png", report: "report.json", actions: "actions.jsonl", observation: "final-observation.json", trace: "trace.zip",
+  screenshot: "final.png", report: "report.json", actions: "actions.jsonl", initialObservation: "initial-observation.json", observation: "final-observation.json", trace: "trace.zip",
 };
 const runIdPattern = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 const text = (value: unknown, limit = 12_000) => typeof value === "string" ? value.slice(0, limit) : value;
@@ -47,8 +47,9 @@ export async function createDashboardServer(options: { port?: number; hostname?:
           const latestStep = await mongo.store.getLatestRunStep(run.id);
           const currentObservation = observation(run.finalObservation) ?? observation(latestStep?.observation);
           return json({ ...runSummary(run, currentObservation), completion: run.completion, limits: run.limits, environment: run.environment,
+            execution: run.execution, verification: run.verification, diagnosis: run.diagnosis, context: run.context,
             scenarioDefinition: definition ? { id: definition.id, name: definition.name, version: definition.version, startUrl: definition.startUrl, instruction: definition.instruction, proof: definition.proof, maxSteps: definition.maxSteps, maxDuration: definition.maxDuration } : { ...run.scenarioSnapshot, name: run.scenario.name, version: run.scenario.version },
-            proofResults: run.proofResults ?? [], errors: run.errors ?? [], finalObservation: observation(run.finalObservation), currentObservation,
+            proofResults: run.proofResults ?? [], errors: run.errors ?? [], initialObservation: observation(run.initialObservation), finalObservation: observation(run.finalObservation), currentObservation,
             artifacts: Object.entries(artifactFiles).filter(([, filename]) => existsSync(resolve(runsDirectory, run.id, filename))).map(([key, filename]) => ({ key, filename, url: `/api/runs/${encodeURIComponent(run.id)}/artifacts/${key}` })),
           });
         }
@@ -56,7 +57,8 @@ export async function createDashboardServer(options: { port?: number; hostname?:
           const run = await mongo.store.getRun(parts[2]!);
           if (!run) return json({ error: "Run not found" }, 404);
           const steps = await mongo.store.getRunSteps(parts[2]!);
-          return json(steps.map((step: any) => ({ sequence: step.sequence, startedAt: step.startedAt, finishedAt: step.finishedAt, durationMs: step.durationMs, status: step.status, action: step.action, error: text(step.error, 2_000), observation: observation(step.observation), inspection: step.inspection })));
+          return json(steps.map((step: any) => ({ sequence: step.sequence, startedAt: step.startedAt, finishedAt: step.finishedAt, durationMs: step.durationMs, status: step.status, action: step.action, error: text(step.error, 2_000), evidenceError: text(step.evidenceError, 2_000), observation: observation(step.observation), inspection: step.inspection,
+            screenshotUrl: step.screenshot ? step.status === "done" ? `/api/runs/${encodeURIComponent(run.id)}/artifacts/screenshot` : `/api/runs/${encodeURIComponent(run.id)}/artifacts/steps/${step.sequence}` : undefined })));
         }
         if (parts[0] === "api" && parts[1] === "scenarios" && parts.length === 3) {
           const definition = await mongo.store.getScenarioDefinition(parts[2]!);
@@ -73,6 +75,19 @@ export async function createDashboardServer(options: { port?: number; hostname?:
           const actual = await realpath(path);
           if (basename(actual) !== filename || !actual.startsWith(`${await realpath(directory)}/`)) return json({ error: "Artifact not found" }, 404);
           return new Response(Bun.file(actual), { headers: { "content-disposition": `inline; filename="${filename}"` } });
+        }
+        if (parts[0] === "api" && parts[1] === "runs" && parts[3] === "artifacts" && parts[4] === "steps" && parts.length === 6) {
+          const runId = parts[2]!;
+          const sequence = Number(parts[5]);
+          if (!runIdPattern.test(runId) || !Number.isSafeInteger(sequence) || sequence < 1) return json({ error: "Artifact not found" }, 404);
+          if (!await mongo.store.getRun(runId)) return json({ error: "Run not found" }, 404);
+          const step = await mongo.store.getRunStep(runId, sequence);
+          if (!step || step.status !== "failed" || typeof step.screenshot !== "string") return json({ error: "Artifact not found" }, 404);
+          const expected = resolve(runsDirectory, runId, "steps", `${String(sequence).padStart(6, "0")}-failed.png`);
+          if (resolve(step.screenshot) !== expected || !existsSync(expected)) return json({ error: "Artifact not found" }, 404);
+          const actual = await realpath(expected);
+          if (!actual.startsWith(`${await realpath(resolve(runsDirectory, runId))}/`)) return json({ error: "Artifact not found" }, 404);
+          return new Response(Bun.file(actual), { headers: { "content-type": "image/png", "cache-control": "no-store" } });
         }
         if (options.staticDirectory && request.method === "GET") {
           const relativePath = url.pathname === "/" ? "index.html" : url.pathname.slice(1);
