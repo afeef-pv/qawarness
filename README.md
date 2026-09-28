@@ -85,6 +85,10 @@ proof:
 ```
 
 The execution agent never sees the proof.
+For `judge` proof, the reviewer receives the final screenshot, recent normalized
+observations, and action history after `done`. The screenshot is sent to the
+configured model provider. The run report records the screenshot path and step
+numbers used as evidence; it does not embed image bytes.
 
 Runs stop after at most 200 agent steps or 90 minutes. A scenario can request
 lower limits with `maxSteps` and `maxDuration`.

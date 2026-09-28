@@ -59,9 +59,13 @@ export class DeepSeekProvider implements LLMProvider {
           model: this.model,
           messages: request.messages.map((message) => message.role === "tool"
             ? { role: "tool", tool_call_id: message.toolCallId, content: message.content }
-            : message.toolCalls
+            : message.role === "assistant" && message.toolCalls
               ? { role: "assistant", content: message.content || null, tool_calls: message.toolCalls.map((call) => ({ id: call.id, type: "function", function: { name: call.name, arguments: JSON.stringify(call.arguments) } })) }
-              : { role: message.role, content: message.content }),
+              : message.role === "user" && Array.isArray(message.content)
+                ? { role: "user", content: message.content.map((part) => part.type === "text"
+                  ? { type: "text", text: part.text }
+                  : { type: "image_url", image_url: { url: part.dataUrl, ...(part.detail ? { detail: part.detail } : {}) } }) }
+                : { role: message.role, content: message.content }),
           ...(request.tools ? { thinking: { type: "disabled" }, tools: request.tools.map((tool) => ({ type: "function", function: { name: tool.name, description: tool.description, parameters: tool.inputSchema } })), tool_choice: "required", parallel_tool_calls: false } : {}),
           ...(request.temperature === undefined ? {} : { temperature: request.temperature }),
           ...(request.maxTokens === undefined ? {} : { max_tokens: request.maxTokens }),

@@ -53,6 +53,22 @@ describe("DeepSeekProvider", () => {
     });
   });
 
+  test("sends a reviewer image as a user content part", async () => {
+    let payload: Record<string, unknown> | undefined;
+    const provider = new DeepSeekProvider({ apiKey: "test-key", fetch: async (_url, init) => {
+      payload = JSON.parse(String(init?.body));
+      return Response.json({ model: "deepseek-flash", choices: [{ message: { content: '{"status":"satisfied","reason":"Visible"}' } }] });
+    } });
+    await provider.generate({ messages: [{ role: "user", content: [
+      { type: "text", text: "Check this state" },
+      { type: "image", dataUrl: "data:image/png;base64,cG5n", detail: "original" },
+    ] }] });
+    expect(payload?.messages).toEqual([{ role: "user", content: [
+      { type: "text", text: "Check this state" },
+      { type: "image_url", image_url: { url: "data:image/png;base64,cG5n", detail: "original" } },
+    ] }]);
+  });
+
   test("surfaces HTTP errors with status and redacts the key", async () => {
     const provider = new DeepSeekProvider({
       apiKey: "test-secret",

@@ -58,7 +58,17 @@ test("runner executes one action, done and independent proof", async () => {
   let turn = 0;
   let reviewerStatus: "satisfied" | "not_satisfied" = "satisfied";
   const provider: LLMProvider = { name: "fake", async generate(request) {
-    if (!request.tools) return { provider: "fake", model: "reviewer", text: JSON.stringify({ status: reviewerStatus, reason: "Evidence checked." }) };
+    if (!request.tools) {
+      const user = request.messages[1];
+      expect(user?.role).toBe("user");
+      expect(user?.role === "user" && Array.isArray(user.content) && user.content[1]?.type).toBe("image");
+      if (user?.role === "user" && Array.isArray(user.content)) {
+        expect(user.content[1]?.type === "image" && user.content[1].dataUrl.startsWith("data:image/png;base64,iVBOR")).toBe(true);
+        const evidence = user.content[0];
+        expect(evidence?.type === "text" && JSON.parse(evidence.text).actionHistory.map((step: { sequence: number }) => step.sequence)).toEqual([1, 2]);
+      }
+      return { provider: "fake", model: "reviewer", text: JSON.stringify({ status: reviewerStatus, reason: "Evidence checked." }) };
+    }
     if (turn === 0) expect(JSON.stringify(request.messages)).not.toContain("The page confirms Ada was created");
     const calls = [
       { id: "1", name: "click", arguments: { target: { by: "role", role: "button", name: "Create" } } },
@@ -81,6 +91,7 @@ test("runner executes one action, done and independent proof", async () => {
     expect(report.proofResults[0]?.passed).toBe(true);
     expect(report.proofResults).toHaveLength(6);
     expect(report.proofResults[5]).toMatchObject({ passed: true, status: "satisfied", reviewer: { provider: "fake", model: "reviewer" } });
+    expect(report.proofResults[5]).toMatchObject({ evidence: { screenshot: join(directory, "final.png"), stepSequences: [1, 2] } });
     expect((await readFile(join(directory, "actions.jsonl"), "utf8")).trim().split("\n")).toHaveLength(2);
     expect((await Bun.file(join(directory, "final.png")).exists())).toBe(true);
     expect((await Bun.file(join(directory, "trace.zip")).exists())).toBe(true);

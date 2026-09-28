@@ -33,6 +33,7 @@ export async function runScenario(scenario: QAScenario, provider: LLMProvider, e
   let persistenceError: unknown;
   let recordedSteps = 0;
   let reviewing = false;
+  let screenshotCaptured = false;
   const history: ExecutionRecord[] = [];
   const controller = new AbortController();
   const durationTimer = setTimeout(() => controller.abort(), limits.maxDurationMs);
@@ -56,6 +57,10 @@ export async function runScenario(scenario: QAScenario, provider: LLMProvider, e
     report.result = result.status === "done" ? "verification_failed" : result.status;
     if (controller.signal.aborted) report.result = "max_duration";
     if (result.status === "done" && !controller.signal.aborted) {
+      if (scenario.proof.some(proof => proof.type === "judge")) {
+        await environment.screenshot(artifacts.screenshot);
+        screenshotCaptured = true;
+      }
       const observation = await environment.observe();
       const deterministic = await verifyProof(scenario.proof.filter(proof => proof.type !== "judge"), environment, observation);
       if (controller.signal.aborted) throw new Error("Run exceeded its duration limit");
@@ -63,7 +68,7 @@ export async function runScenario(scenario: QAScenario, provider: LLMProvider, e
       for (const proof of scenario.proof) {
         if (proof.type === "judge") reviewing = true;
         report.proofResults.push(proof.type === "judge"
-          ? await reviewJudgeProof(proof, scenario.instruction, observation, history, provider, controller.signal)
+          ? await reviewJudgeProof(proof, scenario.instruction, observation, history, provider, controller.signal, artifacts.screenshot)
           : deterministicResults.next().value!);
         if (controller.signal.aborted) throw new Error("Run exceeded its duration limit");
         reviewing = false;
@@ -80,7 +85,7 @@ export async function runScenario(scenario: QAScenario, provider: LLMProvider, e
       : error instanceof LLMError ? "provider_failure" : "harness_failure";
   } finally {
     clearTimeout(durationTimer);
-    try { await environment.screenshot(artifacts.screenshot); } catch (error) { report.errors.push(`screenshot: ${String(error)}`); }
+    if (!screenshotCaptured) try { await environment.screenshot(artifacts.screenshot); } catch (error) { report.errors.push(`screenshot: ${String(error)}`); }
     try { report.finalObservation = await environment.observe(); await writeFile(artifacts.observation, JSON.stringify(report.finalObservation, null, 2)); } catch (error) { report.errors.push(`observation: ${String(error)}`); }
     try { await environment.close(); } catch (error) { report.errors.push(`close: ${String(error)}`); }
     report.finishedAt = new Date().toISOString();

@@ -288,7 +288,12 @@ the deterministic verifier and `judge` proofs go to the reviewer. The reviewer u
 the configured `LLMProvider` and bounded textual evidence. Its result is
 `satisfied`, `not_satisfied`, or `inconclusive`; only `satisfied` passes. A failed
 judgment leaves the run at `verification_failed` and does not classify product versus
-agent failure. Jev and visual evidence remain future extensions.
+agent failure. For a run with `judge` proof, capture the final screenshot before
+verification and send it with bounded action and observation history through the
+provider-neutral image message. The screenshot path and referenced step numbers are
+stored with the judgment; image bytes are not stored in MongoDB. A screenshot failure
+prevents a visual judgment from reporting a pass. This initial visual evidence is the
+final screen, not per-step imagery. Jev remains a future extension.
 
 ## Model responsibilities
 

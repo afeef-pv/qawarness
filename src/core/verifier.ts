@@ -2,7 +2,7 @@ import type { QAEnvironment, QAObservation } from "./environment";
 import type { QAProof } from "./scenario";
 export type DeterministicProof = Exclude<QAProof, { type: "judge" }>;
 export type ProofResult = { proof: DeterministicProof; passed: boolean; observed: unknown }
-  | { proof: Extract<QAProof, { type: "judge" }>; passed: boolean; status: "satisfied" | "not_satisfied" | "inconclusive"; reason: string; reviewer: { provider: string; model: string } };
+  | { proof: Extract<QAProof, { type: "judge" }>; passed: boolean; status: "satisfied" | "not_satisfied" | "inconclusive"; reason: string; reviewer: { provider: string; model: string }; evidence: { screenshot?: string; stepSequences: number[] } };
 export async function verifyProof(proofs: DeterministicProof[], environment: QAEnvironment, observation: QAObservation): Promise<{ passed: boolean; results: ProofResult[] }> {
   const results: ProofResult[] = [];
   for (const proof of proofs) {

@@ -1,9 +1,12 @@
-export interface LLMMessage {
-  role: "system" | "user" | "assistant" | "tool";
-  content: string;
-  toolCalls?: LLMToolCall[];
-  toolCallId?: string;
-}
+export type LLMContentPart =
+  | { type: "text"; text: string }
+  | { type: "image"; dataUrl: string; detail?: "low" | "high" | "original" | "auto" };
+
+export type LLMMessage =
+  | { role: "system"; content: string }
+  | { role: "user"; content: string | LLMContentPart[] }
+  | { role: "assistant"; content: string; toolCalls?: LLMToolCall[] }
+  | { role: "tool"; content: string; toolCallId: string };
 
 export interface LLMTool {
   name: string;

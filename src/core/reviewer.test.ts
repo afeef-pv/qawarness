@@ -1,4 +1,7 @@
 import { expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { LLMProvider } from "./llm/provider";
 import { reviewJudgeProof } from "./reviewer";
 
@@ -27,5 +30,38 @@ test("reviewer evidence redacts credentials from instruction and observation", a
     expect(JSON.stringify(request.messages)).not.toContain("topsecret");
     return { provider: "fake", model: "reviewer", text: '{"status":"inconclusive","reason":"Not enough evidence"}' };
   } };
-  await reviewJudgeProof(proof, "Password: topsecret", { ...observation, text: "Password: topsecret" }, [], provider);
+  await reviewJudgeProof(proof, "Password: topsecret", { ...observation, text: "Password: topsecret" }, [{
+    sequence: 1, action: { type: "fill", target: { by: "label", label: "Password" }, value: "[redacted]" },
+    startedAt: new Date().toISOString(), durationMs: 1, status: "failed", error: "Password: topsecret",
+    observation: { ...observation, text: "Password: topsecret" },
+    inspection: { count: 1, elements: [{ label: "Password", value: "topsecret", visible: true, enabled: true }] },
+  }], provider);
+});
+
+test("reviewer receives the final image and bounded step evidence", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "qawarness-reviewer-"));
+  const screenshot = join(directory, "final.png");
+  try {
+    await Bun.write(screenshot, "image bytes");
+    const history = Array.from({ length: 10 }, (_, index) => ({
+      sequence: index + 1, action: { type: "click" as const, target: { by: "text" as const, text: "Save" } },
+      startedAt: new Date().toISOString(), durationMs: 1, status: "succeeded" as const,
+      observation: { ...observation, text: index === 9 ? "Saved account" : `State ${index}` },
+    }));
+    const provider: LLMProvider = { name: "fake", async generate(request) {
+      const user = request.messages[1];
+      expect(user?.role).toBe("user");
+      if (user?.role !== "user" || !Array.isArray(user.content)) throw new Error("Missing reviewer image");
+      expect(user.content[1]).toEqual({ type: "image", dataUrl: "data:image/png;base64,aW1hZ2UgYnl0ZXM=", detail: "original" });
+      const text = user.content[0];
+      if (text?.type !== "text") throw new Error("Missing reviewer text");
+      const evidence = JSON.parse(text.text);
+      expect(evidence.recentObservations).toHaveLength(8);
+      expect(evidence.recentObservations[0].sequence).toBe(3);
+      expect(evidence.actionHistory).toHaveLength(10);
+      return { provider: "fake", model: "reviewer", text: '{"status":"satisfied","reason":"Visible in the image"}' };
+    } };
+    const result = await reviewJudgeProof(proof, "Check account", observation, history, provider, undefined, screenshot);
+    expect(result.evidence).toEqual({ screenshot, stepSequences: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] });
+  } finally { await rm(directory, { recursive: true, force: true }); }
 });
