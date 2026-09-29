@@ -88,8 +88,12 @@ after filesystem evidence and finalization are attempted.
 
 Capture run context when available: app and harness revisions, fixture, model
 settings, browser version, and viewport. Repeat runs require an explicit
-same-origin reset endpoint and named fixture. Compare only runs with matching
-scenario content and context; the CLI does not own the application server.
+same-origin reset endpoint and named fixture. Before each attempt, send the fixture
+identity and require the reset response to confirm the restored fixture and actual app
+revision. Compare only runs with matching scenario content and context; the CLI does
+not own the application server. Append repeat-group progress as JSONL so interrupted
+batches retain their attempt history; write the aggregate summary only after all
+attempts finish.
 
 The localhost dashboard reads persisted history and allowlisted run artifacts.
 It does not control the runner or rewrite run records. Poll active runs through

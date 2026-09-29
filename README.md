@@ -115,8 +115,17 @@ more specific cause.
 ## Repeat a scenario
 
 The application must expose a `POST` reset endpoint on the same origin as `startUrl`.
-The endpoint should restore the named fixture before every run and answer 2xx only
-when that reset is complete.
+Before each attempt, qawarness sends `{"fixture":"empty-store"}` as JSON. The endpoint
+must finish restoring that fixture, then return 2xx JSON identifying the fixture and
+the app revision it is serving:
+
+```json
+{"fixture":"empty-store","applicationRevision":"abc123"}
+```
+
+The response must match `--fixture` and `--app-revision`; otherwise the browser does
+not start. The endpoint should report its own revision, rather than echoing a client
+supplied revision.
 
 ```bash
 bun run qa:repeat scenarios/save.yaml \
@@ -128,9 +137,11 @@ bun run qa:repeat scenarios/save.yaml \
 
 The command runs each attempt in a fresh browser, writes individual run artifacts,
 and saves `runs/repeat-*.json` with the pass rate, average steps and duration, and
-diagnosis counts. It refuses to combine runs whose scenario, application revision,
-fixture, model, or environment context differs. For a single `bun run qa`, optional
-`QA_APP_REVISION` and `QA_FIXTURE` values are recorded with the run.
+diagnosis counts. It also appends each reset and run transition to `runs/repeat-*.jsonl`,
+so an interrupted batch shows which attempt was in progress. The JSON summary is
+written only after every attempt completes. It refuses to combine runs whose scenario,
+application revision, fixture, model, or environment context differs. For a single
+`bun run qa`, optional `QA_APP_REVISION` and `QA_FIXTURE` values are recorded with the run.
 
 Runs stop after at most 200 agent steps or 90 minutes. A scenario can request
 lower limits with `maxSteps` and `maxDuration`.

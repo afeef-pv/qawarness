@@ -19,7 +19,7 @@ export interface RepeatSummary {
 export async function repeatScenario(
   scenario: QAScenario,
   count: number,
-  reset: () => Promise<void>,
+  reset: (index: number) => Promise<void>,
   run: (index: number) => Promise<RunReport>,
 ): Promise<RepeatSummary> {
   if (!Number.isSafeInteger(count) || count < 1 || count > 20) throw new Error("Repeat count must be between 1 and 20");
@@ -27,7 +27,7 @@ export async function repeatScenario(
   let group: string | undefined;
   const expectedScenarioHash = scenarioContentHash(scenario);
   for (let index = 0; index < count; index++) {
-    await reset();
+    await reset(index);
     const report = await run(index);
     if (report.scenarioContentHash !== expectedScenarioHash) throw new Error("Repeated run used a different scenario definition");
     if (!report.context.applicationRevision || !report.context.fixture) throw new Error("Repeated runs require an application revision and fixture identity");
