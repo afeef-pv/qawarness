@@ -61,8 +61,29 @@ and are ignored by Git.
 Run it:
 
 ```bash
-bun run qa scenarios/sign-in.yaml --headed
+bun run qawarness validate scenarios/sign-in.yaml
+bun run qawarness run scenarios/sign-in.yaml --headed
 ```
+
+## CLI
+
+```text
+bun run qawarness --help
+bun run qawarness run <scenario.yaml> [--headed]
+bun run qawarness repeat <scenario.yaml> --count <1..20> --reset-url <url> --app-revision <revision> --fixture <id> [--headed]
+bun run qawarness validate <scenario.yaml> [--json]
+bun run qawarness runs list [--limit <1..100>] [--json]
+bun run qawarness runs show <run-id> [--json]
+```
+
+Each command has `--help`. `validate` checks the scenario without a browser, model
+key, or database. `runs` reads local completed reports from `runs/`; `--json` is
+available for scripts. The `qa` and `qa:repeat` scripts remain aliases for `run`
+and `repeat`.
+
+Exit codes: 0 means validation succeeded or every run passed; 1 means a completed
+run did not pass; 2 means invalid input or a setup error. Inspect the report's
+result and diagnosis to see why a run did not pass.
 
 ## Proof
 
@@ -128,7 +149,7 @@ not start. The endpoint should report its own revision, rather than echoing a cl
 supplied revision.
 
 ```bash
-bun run qa:repeat scenarios/save.yaml \
+bun run qawarness repeat scenarios/save.yaml \
   --count 5 \
   --reset-url http://localhost:3000/test/reset \
   --app-revision abc123 \
@@ -213,13 +234,13 @@ bun run llm:smoke
 Run QA:
 
 ```bash
-bun run qa scenarios/example.yaml
+bun run qawarness run scenarios/example.yaml
 ```
 
 Watch it:
 
 ```bash
-bun run qa scenarios/example.yaml --headed
+bun run qawarness run scenarios/example.yaml --headed
 ```
 
 ## Rules

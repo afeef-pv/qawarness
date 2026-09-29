@@ -46,6 +46,13 @@ what success requires; the verifier independently decides whether the proof hold
 Validate scenarios before starting the browser or provider. The CLI connects to
 an externally started app server.
 
+The Bun CLI is the operator entry point for running, repeating, validating, and
+inspecting local reports. Keep parsing and help at that edge, reuse the same run
+functions as the legacy package aliases, and preserve exit codes: 0 for success,
+1 for a completed non-passing run, 2 for invalid input or setup error. Scenario
+files remain the authored test definitions; the CLI does not create a second
+definition store.
+
 `done` means the agent believes the task is ready for verification. It is an
 execution record, not a browser action or a pass. Proof is checked once after
 `done`; failed verification ends the run. Do not resume execution to repair a

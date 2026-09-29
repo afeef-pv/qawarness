@@ -30,7 +30,7 @@ test("repeat CLI resets each run and writes a comparable summary", async () => {
   try {
     const scenarioPath = join(directory, "save.yaml");
     await writeFile(scenarioPath, `name: save\nstartUrl: http://localhost:${app.port}/\ninstruction: Click Save\nproof:\n  - type: text_visible_after_click\n    target: { by: role, role: button, name: Save }\n    text: Saved\n`);
-    const child = Bun.spawn(["bun", "run", "src/repeat.ts", scenarioPath, "--count", "2", "--reset-url", `http://localhost:${app.port}/reset`, "--app-revision", "app-v1", "--fixture", "empty-store"], {
+    const child = Bun.spawn(["bun", "run", "src/cli.ts", "repeat", scenarioPath, "--count", "2", "--reset-url", `http://localhost:${app.port}/reset`, "--app-revision", "app-v1", "--fixture", "empty-store"], {
       cwd: process.cwd(), env: { ...process.env, DEEPSEEK_API_KEY: "test-key", DEEPSEEK_BASE_URL: `http://127.0.0.1:${model.port}`, MONGODB_URI: "" }, stdout: "pipe", stderr: "pipe",
     });
     const [stdout, stderr, exit] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
@@ -69,7 +69,7 @@ test("repeat CLI rejects an unconfirmed reset and keeps the failed attempt", asy
   try {
     const scenarioPath = join(directory, "scenario.yaml");
     await writeFile(scenarioPath, `name: reset-check\nstartUrl: http://localhost:${app.port}/\ninstruction: Check the page\nproof:\n  - type: text_visible\n    text: ready\n`);
-    const child = Bun.spawn(["bun", "run", "src/repeat.ts", scenarioPath, "--count", "2", "--reset-url", `http://localhost:${app.port}/reset`, "--app-revision", "app-v1", "--fixture", "empty-store"], {
+    const child = Bun.spawn(["bun", "run", "src/cli.ts", "repeat", scenarioPath, "--count", "2", "--reset-url", `http://localhost:${app.port}/reset`, "--app-revision", "app-v1", "--fixture", "empty-store"], {
       cwd: process.cwd(), env: { ...process.env, DEEPSEEK_API_KEY: "test-key", MONGODB_URI: "" }, stdout: "pipe", stderr: "pipe",
     });
     const [stdout, stderr, exit] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
@@ -94,7 +94,7 @@ test("repeat CLI records setup failure before the first attempt", async () => {
   try {
     const scenarioPath = join(directory, "scenario.yaml");
     await writeFile(scenarioPath, "name: setup-check\nstartUrl: http://localhost:3000/\ninstruction: Check the page\nproof:\n  - type: text_visible\n    text: ready\n");
-    const child = Bun.spawn(["bun", "run", "src/repeat.ts", scenarioPath, "--count", "1", "--reset-url", "http://localhost:3000/reset", "--app-revision", "app-v1", "--fixture", "empty-store"], {
+    const child = Bun.spawn(["bun", "run", "src/cli.ts", "repeat", scenarioPath, "--count", "1", "--reset-url", "http://localhost:3000/reset", "--app-revision", "app-v1", "--fixture", "empty-store"], {
       cwd: process.cwd(), env: { ...process.env, DEEPSEEK_API_KEY: "", MONGODB_URI: "" }, stdout: "pipe", stderr: "pipe",
     });
     const stderr = await new Response(child.stderr).text();
