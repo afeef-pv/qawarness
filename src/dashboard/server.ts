@@ -56,7 +56,7 @@ export async function createDashboardServer(options: { port?: number; hostname?:
           const currentObservation = observation(run.finalObservation) ?? observation(latestStep?.observation);
           return json({ ...runSummary(run, currentObservation), completion: run.completion, limits: run.limits, environment: run.environment,
             execution: run.execution, verification: run.verification, diagnosis: run.diagnosis, context: run.context,
-            scenarioDefinition: definition ? { id: definition.id, name: definition.name, version: definition.version, startUrl: definition.startUrl, instruction: definition.instruction, proof: definition.proof, maxSteps: definition.maxSteps, maxDuration: definition.maxDuration } : { ...run.scenarioSnapshot, name: run.scenario.name, version: run.scenario.version },
+            scenarioDefinition: definition ? { id: definition.id, name: definition.name, version: definition.version, description: definition.description, startUrl: definition.startUrl, instruction: definition.instruction, proof: definition.proof, maxSteps: definition.maxSteps, maxDuration: definition.maxDuration } : { ...run.scenarioSnapshot, name: run.scenario.name, version: run.scenario.version },
             proofResults: run.proofResults ?? [], errors: run.errors ?? [], initialObservation: observation(run.initialObservation), finalObservation: observation(run.finalObservation), currentObservation,
             artifacts: Object.entries(artifactFiles).filter(([, filename]) => existsSync(resolve(runsDirectory, run.id, filename))).map(([key, filename]) => ({ key, filename, url: `/api/runs/${encodeURIComponent(run.id)}/artifacts/${key}` })),
           });

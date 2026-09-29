@@ -47,9 +47,10 @@ export interface RunStore {
 }
 
 export function scenarioContentHash(scenario: QAScenario): string {
-  return createHash("sha256").update(JSON.stringify({ name: scenario.name, startUrl: scenario.startUrl, instruction: scenario.instruction, proof: scenario.proof, maxSteps: scenario.maxSteps, maxDuration: scenario.maxDuration })).digest("hex");
+  return createHash("sha256").update(JSON.stringify({ name: scenario.name, description: scenario.description, startUrl: scenario.startUrl, instruction: scenario.instruction, proof: scenario.proof, maxSteps: scenario.maxSteps, maxDuration: scenario.maxDuration })).digest("hex");
 }
 
 export function redactScenario(scenario: QAScenario): QAScenario {
-  return { ...scenario, instruction: scenario.instruction.replace(/(password|passcode|secret|api[_ -]?key)(\s*[:=]\s*)([^\s]+)/gi, "$1$2[redacted]") };
+  const redact = (text: string) => text.replace(/(password|passcode|secret|api[_ -]?key)(\s*[:=]\s*)([^\s]+)/gi, "$1$2[redacted]");
+  return { ...scenario, ...(scenario.description ? { description: redact(scenario.description) } : {}), instruction: redact(scenario.instruction) };
 }

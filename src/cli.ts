@@ -2,6 +2,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { scenarioContentHash } from "./core/run-store";
 import { loadScenario, parseDurationMs } from "./core/scenario";
+import { defineScenario, definitionPath } from "./definitions";
 import { runQa } from "./qa";
 import { runRepeat } from "./repeat";
 
@@ -21,9 +22,10 @@ const rootHelp = `qawarness — local agentic QA
 Usage: bun run qawarness <command> [options]
 
 Commands:
-  run <scenario.yaml>       Run one scenario
-  repeat <scenario.yaml>    Run comparable attempts with a fixture reset
-  validate <scenario.yaml>  Check a scenario without starting a browser or model
+  define                    Save a versioned test definition from plain text
+  run <scenario.yaml|name>  Run one scenario
+  repeat <scenario.yaml|name> Run comparable attempts with a fixture reset
+  validate <scenario.yaml|name> Check a scenario without starting a browser or model
   runs list                 List local completed runs
   runs show <run-id>        Show a local run report
 
@@ -31,16 +33,21 @@ Run "bun run qawarness <command> --help" for command options.
 Other scripts: bun run dashboard, bun run db:init, bun run smoke, bun run llm:smoke.`;
 
 const help: Record<string, string> = {
-  run: `Usage: bun run qawarness run <scenario.yaml> [--headed]
+  define: `Usage: bun run qawarness define --name <name> [--description <text>] [--start-url <url>] [--instruction <text>] [--proof <text>] [--json]
+
+The first version needs all five fields. Later versions carry forward omitted fields.
+Each version is a runnable scenarios/<name>/vN.yaml file. A plain-text proof uses
+the independent judge verifier. Names use letters, numbers, underscores, or hyphens.`,
+  run: `Usage: bun run qawarness run <scenario.yaml|name> [--headed]
 
 Runs one scenario. Exit 0 on pass, 1 on a completed non-passing run, 2 on a command or setup error.
   --headed  Show the Chromium window`,
-  repeat: `Usage: bun run qawarness repeat <scenario.yaml> --count <1..20> --reset-url <url> --app-revision <revision> --fixture <id> [--headed]
+  repeat: `Usage: bun run qawarness repeat <scenario.yaml|name> --count <1..20> --reset-url <url> --app-revision <revision> --fixture <id> [--headed]
 
 Resets the app before every attempt. The reset URL must share the scenario origin.
 QA_APP_REVISION and QA_FIXTURE may supply the corresponding flags.
 Exit 0 when every attempt passes, 1 on completed non-passing runs, 2 on a command or setup error.`,
-  validate: `Usage: bun run qawarness validate <scenario.yaml> [--json]
+  validate: `Usage: bun run qawarness validate <scenario.yaml|name> [--json]
 
 Checks a scenario and prints its name, effective limits, proof count, and content hash.`,
   runs: `Usage: bun run qawarness runs <list|show> [options]
@@ -80,6 +87,11 @@ function parse(args: string[], flags: Record<string, "boolean" | "value">): { po
 function onePath(positional: string[], label: string): string {
   if (positional.length !== 1 || !positional[0]) throw new UsageError(`Expected one ${label}`);
   return positional[0];
+}
+
+async function scenarioPath(positional: string[]): Promise<string> {
+  const value = onePath(positional, "scenario path or definition name");
+  return /\.ya?ml$/.test(value) || value.includes("/") || value.includes("\\") ? value : definitionPath(value);
 }
 
 function display(report: LocalReport): string {
@@ -137,13 +149,28 @@ export async function main(args: string[]): Promise<number> {
   }
   try {
     switch (command) {
+      case "define": {
+        const { positional, options } = parse(args.slice(1), { "--name": "value", "--description": "value", "--start-url": "value", "--instruction": "value", "--proof": "value", "--json": "boolean" });
+        if (positional.length) throw new UsageError("define takes flags, not positional arguments");
+        const name = options["--name"];
+        if (typeof name !== "string") throw new UsageError("--name is required");
+        const defined = await defineScenario({ name,
+          ...(typeof options["--description"] === "string" ? { description: options["--description"] } : {}),
+          ...(typeof options["--start-url"] === "string" ? { startUrl: options["--start-url"] } : {}),
+          ...(typeof options["--instruction"] === "string" ? { instruction: options["--instruction"] } : {}),
+          ...(typeof options["--proof"] === "string" ? { proof: options["--proof"] } : {}),
+        });
+        const result = { name, ...defined };
+        console.log(options["--json"] ? JSON.stringify(result) : `Defined: ${name} v${defined.version}\nPath: ${defined.path}`);
+        return 0;
+      }
       case "run": {
         const { positional, options } = parse(args.slice(1), { "--headed": "boolean" });
-        return await runQa(onePath(positional, "scenario path"), options["--headed"] === true);
+        return await runQa(await scenarioPath(positional), options["--headed"] === true);
       }
       case "repeat": {
         const { positional, options } = parse(args.slice(1), { "--count": "value", "--reset-url": "value", "--app-revision": "value", "--fixture": "value", "--headed": "boolean" });
-        const scenarioPath = onePath(positional, "scenario path");
+        const selected = await scenarioPath(positional);
         const countText = options["--count"];
         const count = Number(countText);
         if (typeof countText !== "string" || !/^\d+$/.test(countText) || !Number.isSafeInteger(count) || count < 1 || count > 20) throw new UsageError("--count must be an integer from 1 to 20");
@@ -153,11 +180,11 @@ export async function main(args: string[]): Promise<number> {
         if (typeof resetUrl !== "string" || !resetUrl) throw new UsageError("--reset-url is required");
         if (typeof applicationRevision !== "string" || !applicationRevision.trim()) throw new UsageError("--app-revision or QA_APP_REVISION is required");
         if (typeof fixture !== "string" || !fixture.trim()) throw new UsageError("--fixture or QA_FIXTURE is required");
-        return await runRepeat({ scenarioPath, count, resetUrl, applicationRevision, fixture, headed: options["--headed"] === true });
+        return await runRepeat({ scenarioPath: selected, count, resetUrl, applicationRevision, fixture, headed: options["--headed"] === true });
       }
       case "validate": {
         const { positional, options } = parse(args.slice(1), { "--json": "boolean" });
-        const path = onePath(positional, "scenario path");
+        const path = await scenarioPath(positional);
         const scenario = await loadScenario(path);
         const result = { path, name: scenario.name, startUrl: scenario.startUrl, proofCount: scenario.proof.length,
           maxSteps: Math.min(scenario.maxSteps, 200), maxDurationMs: Math.min(scenario.maxDuration ? parseDurationMs(scenario.maxDuration) : 90 * 60_000, 90 * 60_000),

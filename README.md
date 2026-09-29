@@ -69,17 +69,37 @@ bun run qawarness run scenarios/sign-in.yaml --headed
 
 ```text
 bun run qawarness --help
-bun run qawarness run <scenario.yaml> [--headed]
-bun run qawarness repeat <scenario.yaml> --count <1..20> --reset-url <url> --app-revision <revision> --fixture <id> [--headed]
-bun run qawarness validate <scenario.yaml> [--json]
+bun run qawarness define --name <name> --description <text> --start-url <url> --instruction <text> --proof <text>
+bun run qawarness run <scenario.yaml|name> [--headed]
+bun run qawarness repeat <scenario.yaml|name> --count <1..20> --reset-url <url> --app-revision <revision> --fixture <id> [--headed]
+bun run qawarness validate <scenario.yaml|name> [--json]
 bun run qawarness runs list [--limit <1..100>] [--json]
 bun run qawarness runs show <run-id> [--json]
 ```
 
+`define` accepts explicit plain-text wording and writes a runnable
+`scenarios/<name>/v1.yaml`. A changed definition creates `v2.yaml` and keeps the
+earlier file; omitted flags carry forward the previous wording. For a new name,
+all five fields are required. The plain-text proof becomes a `judge` proof, so
+its result is decided by the independent reviewer. Use a handwritten YAML
+scenario when a deterministic proof is possible. `define` does not call a model.
+Generated definitions stay local under `scenarios/` and are ignored by Git.
+
+```bash
+bun run qawarness define \
+  --name sign-in \
+  --description "User can sign in" \
+  --start-url http://localhost:3000/sign-in \
+  --instruction "Enter the test account credentials and sign in" \
+  --proof "The authenticated dashboard is visible"
+bun run qawarness run sign-in
+```
+
 Each command has `--help`. `validate` checks the scenario without a browser, model
-key, or database. `runs` reads local completed reports from `runs/`; `--json` is
-available for scripts. The `qa` and `qa:repeat` scripts remain aliases for `run`
-and `repeat`.
+key, or database. `run`, `repeat`, and `validate` accept a YAML path or the name
+of the latest definition. `runs` reads local completed reports from `runs/`;
+`--json` is available for scripts. The `qa` and `qa:repeat` scripts remain
+aliases for `run` and `repeat`.
 
 Exit codes: 0 means validation succeeded or every run passed; 1 means a completed
 run did not pass; 2 means invalid input or a setup error. Inspect the report's

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -23,7 +23,7 @@ test("CLI help and validation work without a model or database", async () => {
     await writeFile(scenarioPath, "name: check\nstartUrl: http://localhost:3000/\ninstruction: Check the page\nproof:\n  - type: text_visible\n    text: ready\n");
     const help = await invoke(["--help"]);
     expect(help.exit).toBe(0);
-    expect(help.stdout).toContain("validate <scenario.yaml>");
+    expect(help.stdout).toContain("validate <scenario.yaml|name>");
     const validated = await invoke(["validate", scenarioPath, "--json"]);
     expect(validated.exit).toBe(0);
     expect(JSON.parse(validated.stdout)).toMatchObject({ name: "check", proofCount: 1, maxSteps: 30, maxDurationMs: 5_400_000 });
@@ -45,6 +45,43 @@ test("CLI rejects bad options before starting a run", async () => {
   const help = await invoke(["repeat", "--help"]);
   expect(help.exit).toBe(0);
   expect(help.stdout).toContain("--reset-url");
+});
+
+test("define saves plain text as immutable, runnable scenario versions", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "qawarness-cli-define-"));
+  try {
+    const missing = await invoke(["define", "--name", "sign-in"], directory);
+    expect(missing.exit).toBe(2);
+    expect(missing.stderr).toContain("A new definition needs");
+    const first = await invoke(["define", "--name", "sign-in", "--description", "Sign in",
+      "--start-url", "http://localhost:3000/sign-in", "--instruction", "Enter credentials and sign in",
+      "--proof", "Dashboard: signed in", "--json"], directory);
+    expect(first.exit).toBe(0);
+    expect(JSON.parse(first.stdout)).toMatchObject({ name: "sign-in", version: 1, path: "scenarios/sign-in/v1.yaml" });
+    const firstPath = join(directory, "scenarios", "sign-in", "v1.yaml");
+    const firstYaml = await readFile(firstPath, "utf8");
+    expect(firstYaml).toContain("description: Sign in");
+    expect(firstYaml).toContain("type: judge");
+    expect(firstYaml).toContain("Dashboard: signed in");
+    const validated = await invoke(["validate", "sign-in", "--json"], directory);
+    expect(validated.exit).toBe(0);
+    expect(JSON.parse(validated.stdout)).toMatchObject({ name: "sign-in", proofCount: 1, path: "scenarios/sign-in/v1.yaml" });
+    const unchanged = await invoke(["define", "--name", "sign-in", "--proof", "Dashboard: signed in"], directory);
+    expect(unchanged.exit).toBe(2);
+    expect(unchanged.stderr).toContain("unchanged");
+    const second = await invoke(["define", "--name", "sign-in", "--proof", "Account menu is visible", "--json"], directory);
+    expect(second.exit).toBe(0);
+    expect(JSON.parse(second.stdout)).toMatchObject({ version: 2, path: "scenarios/sign-in/v2.yaml" });
+    expect(await readFile(firstPath, "utf8")).toBe(firstYaml);
+    const secondYaml = await readFile(join(directory, "scenarios", "sign-in", "v2.yaml"), "utf8");
+    expect(secondYaml).toContain("instruction: Enter credentials and sign in");
+    expect(secondYaml).toContain("description: Sign in");
+    const latest = await invoke(["validate", "sign-in", "--json"], directory);
+    expect(JSON.parse(latest.stdout)).toMatchObject({ path: "scenarios/sign-in/v2.yaml" });
+    expect(JSON.parse(latest.stdout).contentHash).not.toBe(JSON.parse(validated.stdout).contentHash);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 test("CLI lists and shows local completed reports", async () => {

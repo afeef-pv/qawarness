@@ -26,6 +26,7 @@ test("judge proof requires text and changes scenario version content", () => {
   expect(() => parseScenario({ ...base, proof: [{ type: "judge" }] })).toThrow();
   expect(() => parseScenario({ ...base, proof: [{ type: "judge", text: "  " }] })).toThrow();
   expect(scenarioContentHash(parseScenario(base))).not.toBe(scenarioContentHash(parseScenario({ ...base, proof: [{ type: "judge", text: "The account is active." }] })));
+  expect(scenarioContentHash(parseScenario({ ...base, description: "Original wording" }))).not.toBe(scenarioContentHash(parseScenario({ ...base, description: "Revised wording" })));
 });
 
 test("scenario duration is validated and versioned", () => {
@@ -60,7 +61,7 @@ test("agent receives all proof criteria and done starts independent verification
   const directory = await mkdtemp(join(tmpdir(), "qawarness-"));
   let turn = 0;
   let reviewerStatus: "satisfied" | "not_satisfied" = "satisfied";
-  const scenario = parseScenario({ name: "create", startUrl: `http://localhost:${server.port}/`, instruction: "Click Create", proof: [
+  const scenario = parseScenario({ name: "create", description: "Create a customer", startUrl: `http://localhost:${server.port}/`, instruction: "Click Create", proof: [
     { type: "text_visible", text: "Created Ada" },
     { type: "text_not_visible", text: "Missing customer" },
     { type: "url_contains", value: `localhost:${server.port}` },
@@ -85,6 +86,7 @@ test("agent receives all proof criteria and done starts independent verification
     expect(task?.role === "user" && typeof task.content === "string").toBe(true);
     if (task?.role === "user" && typeof task.content === "string") {
       expect(task.content).toContain(scenario.instruction);
+      expect(task.content).toContain("Create a customer");
       expect(task.content).toContain(JSON.stringify(scenario.proof, null, 2));
       expect(task.content).not.toContain("Current state:");
     }

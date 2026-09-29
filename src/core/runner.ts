@@ -25,7 +25,7 @@ export async function runScenario(scenario: QAScenario, provider: LLMProvider, e
     try {
       const definition = await options.store.saveScenarioDefinition(scenario, options.source);
       await options.store.createRun({ id: runId, scenario: { definitionId: definition.id, name: scenario.name, version: definition.version }, scenarioSnapshot: {
-        startUrl: safeScenario.startUrl, instruction: safeScenario.instruction, proof: safeScenario.proof, maxSteps: safeScenario.maxSteps,
+        startUrl: safeScenario.startUrl, ...(safeScenario.description ? { description: safeScenario.description } : {}), instruction: safeScenario.instruction, proof: safeScenario.proof, maxSteps: safeScenario.maxSteps,
         ...(safeScenario.maxDuration ? { maxDuration: safeScenario.maxDuration } : {}),
       }, status: "running", startedAt: new Date(report.startedAt), heartbeatAt: new Date(report.startedAt), agent: { provider: provider.name, model: options.agentModel ?? "unknown" },
         environment: { platform: "web", backend: options.backend ?? "unknown", startUrl: scenario.startUrl }, stepCount: 0, limits, context: report.context, artifacts });

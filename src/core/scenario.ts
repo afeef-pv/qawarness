@@ -10,7 +10,7 @@ export type QAProof =
   | { type: "text_visible_after_click"; target: SemanticTarget; text: string }
   | { type: "no_application_errors" }
   | { type: "judge"; text: string };
-export interface QAScenario { name: string; startUrl: string; instruction: string; proof: QAProof[]; maxSteps: number; maxDuration?: string }
+export interface QAScenario { name: string; description?: string; startUrl: string; instruction: string; proof: QAProof[]; maxSteps: number; maxDuration?: string }
 export const object = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const str = (v: unknown): v is string => typeof v === "string" && !!v.trim();
 export function parseDurationMs(v: unknown): number {
@@ -34,6 +34,7 @@ export function parseTarget(v: unknown): SemanticTarget {
 }
 export function parseScenario(v: unknown): QAScenario {
   if (!object(v) || !str(v.name) || !str(v.startUrl) || !str(v.instruction) || !Array.isArray(v.proof) || !v.proof.length) throw new Error("scenario requires name, startUrl, instruction and nonempty proof");
+  if (v.description !== undefined && !str(v.description)) throw new Error("description must be nonempty text");
   const url = new URL(v.startUrl);
   if (!["http:", "https:"].includes(url.protocol)) throw new Error("startUrl must be HTTP(S)");
   const maxSteps = v.maxSteps === undefined ? 30 : v.maxSteps;
@@ -52,7 +53,7 @@ export function parseScenario(v: unknown): QAScenario {
     }
     throw new Error(`invalid proof ${i + 1}`);
   });
-  return { name: v.name, startUrl: v.startUrl, instruction: v.instruction, proof, maxSteps: maxSteps as number,
+  return { name: v.name, ...(v.description === undefined ? {} : { description: v.description as string }), startUrl: v.startUrl, instruction: v.instruction, proof, maxSteps: maxSteps as number,
     ...(v.maxDuration === undefined ? {} : { maxDuration: v.maxDuration as string }) };
 }
 export async function loadScenario(path: string): Promise<QAScenario> { return parseScenario(YAML.parse(await readFile(path, "utf8"))); }
