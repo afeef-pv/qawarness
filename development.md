@@ -186,6 +186,17 @@ Do not attempt to serialize the entire DOM simply because it is available.
 Do not implement a custom accessibility system if the underlying platform already provides meaningful semantic information.
 
 The observation should contain enough information for navigation and verification without becoming an uncontrolled state dump.
+The web execution agent receives the normalized observation and a screenshot of the
+current viewport. The screenshot establishes which controls are actually on top;
+DOM text and elements may include controls covered by an overlay. Only the latest
+screenshot is sent with each model request, while text action history remains.
+Agent screenshots remain in the run directory. The agent can request a bounded
+wait for a loading screen before viewing another screenshot. Semantic actions
+remain the normal interaction path.
+When a successful click leaves the immediate normalized state unchanged, an
+identical requested click is deferred into a recorded wait and fresh observation.
+The guard stops after 12 seconds of repeated requests without confirmation; it
+never silently replays the click while a previous attempt may still be pending.
 
 ## Execution and verification are separate
 
@@ -255,16 +266,22 @@ maxSteps: 30
 
 The instruction tells the execution agent what to accomplish.
 
-The proof tells the verifier what must actually be true.
+The proof tells the execution agent what success requires and the verifier what
+must actually be true. Keep these criteria in proof rather than duplicating them
+in the instruction.
 
-Execution agents receive the instruction and observations, never the proof. Scenario
+Execution agents receive the instruction, all proof criteria, and observations.
+They use observed evidence to decide when to call `done`; the independent verifier
+owns the pass/fail decision. Scenario
 files are validated before the browser or provider starts. Local application servers
 are started externally; the CLI connects to an already-running URL.
 
 The agent receives only restricted semantic QA tools. Every model tool call is
 untrusted and validated before execution. The loop is observe → one action → observe;
 ordinary action failures return to the agent for recovery. `done` starts independent
-verification and never implies a pass. Deterministic proof checks come before any
+verification and never implies a pass. Proof is evaluated after `done`, not after
+each action. Failed final verification ends the run without resuming execution.
+Deterministic proof checks come before any
 model-based verification. The report records execution, verification, and diagnosis
 separately. The existing run status remains available for CLI and history consumers.
 
@@ -283,7 +300,8 @@ Do not let the execution agent's belief substitute for proof.
 
 `judge` is a first-class proof type whose `text` is a natural-language verification
 criterion. Prefer deterministic proof when a condition can be expressed reliably.
-The execution agent never receives proof. After `done`, deterministic proofs go to
+The execution agent receives `judge` criteria along with deterministic proof.
+After `done`, deterministic proofs go to
 the deterministic verifier and `judge` proofs go to the reviewer. The reviewer uses
 the configured `LLMProvider` and bounded text and image evidence. Its result is
 `satisfied`, `not_satisfied`, or `inconclusive`; only `satisfied` passes. A failed

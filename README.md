@@ -2,9 +2,10 @@
 
 Agentic QA harness.
 
-Give it a scenario.
-An agent uses the app through a restricted semantic API.
-When it thinks the task is done, qawarness verifies the result separately.
+Give it a scenario with an instruction and proof criteria.
+An agent receives both and uses the app through a restricted semantic API.
+When it believes the task is complete and the evidence supports the proof,
+qawarness verifies the result separately.
 
 ```text
 scenario
@@ -84,7 +85,10 @@ proof:
     text: The order summary correctly reflects the items purchased and the amount charged.
 ```
 
-The execution agent never sees the proof.
+The execution agent sees all proof criteria alongside the instruction and app
+observations. It uses them to decide when to call `done`. The verifier independently
+checks the proof after `done`; failed verification ends the run without resuming
+execution.
 For `judge` proof, the reviewer receives the final screenshot, recent normalized
 observations, and action history after `done`. The screenshot is sent to the
 configured model provider. The run report records the screenshot path and step

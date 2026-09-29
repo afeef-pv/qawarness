@@ -68,7 +68,7 @@ export async function runScenario(scenario: QAScenario, provider: LLMProvider, e
           : join(runDirectory, "steps", `${String(record.sequence).padStart(6, "0")}-failed.png`);
         await environment.screenshot(path);
         return path;
-      }), { maxSteps: limits.maxSteps, signal: controller.signal });
+      }), { maxSteps: limits.maxSteps, signal: controller.signal, screenshotDirectory: join(runDirectory, "agent-screens") });
     report.steps = result.steps;
     report.execution.status = result.status;
     report.completionReason = result.completionReason;

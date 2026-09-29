@@ -58,6 +58,8 @@ export class PlaywrightEnvironment implements QAEnvironment {
     await page.goto(url, {
       waitUntil: "domcontentloaded",
     });
+    // Client-rendered apps can finish DOMContentLoaded before their first screen appears.
+    await page.waitForFunction(() => !!document.body?.innerText.trim(), undefined, { timeout: 3_000 }).catch(() => {});
   }
 
   async act(action: QAAction): Promise<QAActionOutcome> {
@@ -160,7 +162,7 @@ export class PlaywrightEnvironment implements QAEnvironment {
 
     await page.screenshot({
       path,
-      fullPage: true,
+      fullPage: false,
       mask: [page.locator('input[type="password"], [autocomplete="current-password"], [autocomplete="new-password"]')],
     });
 

@@ -6,6 +6,7 @@ out
 dist
 runs/
 scenarios/
+docs/
 *.tgz
 
 # code coverage

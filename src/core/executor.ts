@@ -33,6 +33,9 @@ export class QAExecutor {
       record.status = "done";
       this.completed = true;
       record.observation = await this.environment.observe();
+    } else if (action.type === "wait") {
+      await new Promise(resolve => setTimeout(resolve, action.milliseconds));
+      record.observation = await this.environment.observe();
     } else if (action.type === "inspect") {
       try {
         record.inspection = await this.environment.inspect(action.target);

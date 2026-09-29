@@ -15,6 +15,8 @@ import type { LLMProvider } from "./llm/provider";
 test("scenario and model action boundaries reject malformed input", () => {
   expect(() => parseScenario({ name: "x", startUrl: "http://localhost", instruction: "do it", proof: [{ type: "unknown" }] })).toThrow();
   expect(() => parseAgentAction("click", { target: { by: "coordinates", x: "1", y: 2 } })).toThrow();
+  expect(parseAgentAction("wait", { milliseconds: 500 })).toEqual({ type: "wait", milliseconds: 500 });
+  expect(() => parseAgentAction("wait", { milliseconds: 30_000 })).toThrow();
   expect(() => parseAgentAction("evaluate", { script: "alert(1)" })).toThrow();
 });
 
@@ -53,13 +55,22 @@ test("password input is masked before recording", () => {
   expect(record.action).toEqual({ type: "fill", target: { by: "label", label: "Password" }, value: "[redacted]" });
 });
 
-test("runner executes one action, done and independent proof", async () => {
+test("agent receives all proof criteria and done starts independent verification", async () => {
   const server = Bun.serve({ port: 0, fetch: () => new Response('<title>Test</title><button onclick="document.querySelector(\'p\').textContent=\'Created Ada\'">Create</button><p></p>', { headers: { "content-type": "text/html" } }) });
   const directory = await mkdtemp(join(tmpdir(), "qawarness-"));
   let turn = 0;
   let reviewerStatus: "satisfied" | "not_satisfied" = "satisfied";
+  const scenario = parseScenario({ name: "create", startUrl: `http://localhost:${server.port}/`, instruction: "Click Create", proof: [
+    { type: "text_visible", text: "Created Ada" },
+    { type: "text_not_visible", text: "Missing customer" },
+    { type: "url_contains", value: `localhost:${server.port}` },
+    { type: "element_visible", target: { by: "role", role: "button", name: "Create" } },
+    { type: "element_text", target: { by: "role", role: "button", name: "Create" }, equals: "Create" },
+    { type: "judge", text: "The page confirms Ada was created" },
+  ] });
   const provider: LLMProvider = { name: "fake", async generate(request) {
     if (!request.tools) {
+      expect(turn).toBe(2);
       const user = request.messages[1];
       expect(user?.role).toBe("user");
       expect(user?.role === "user" && Array.isArray(user.content) && user.content[1]?.type).toBe("image");
@@ -70,7 +81,31 @@ test("runner executes one action, done and independent proof", async () => {
       }
       return { provider: "fake", model: "reviewer", text: JSON.stringify({ status: reviewerStatus, reason: "Evidence checked." }) };
     }
-    if (turn === 0) expect(JSON.stringify(request.messages)).not.toContain("The page confirms Ada was created");
+    const task = request.messages[1];
+    expect(task?.role === "user" && typeof task.content === "string").toBe(true);
+    if (task?.role === "user" && typeof task.content === "string") {
+      expect(task.content).toContain(scenario.instruction);
+      expect(task.content).toContain(JSON.stringify(scenario.proof, null, 2));
+      expect(task.content).not.toContain("Current state:");
+    }
+    const screen = request.messages.at(-1);
+    expect(screen?.role === "user" && Array.isArray(screen.content) && screen.content[1]?.type === "image" &&
+      screen.content[1].dataUrl.startsWith("data:image/png;base64,iVBOR")).toBe(true);
+    if (screen?.role === "user" && Array.isArray(screen.content)) {
+      expect(screen.content[0]?.type === "text" && screen.content[0].text).toContain(`URL: ${scenario.startUrl}`);
+      expect(screen.content[0]?.type === "text" && screen.content[0].text).toContain(turn === 0 ? "Create" : "Created Ada");
+    }
+    expect(request.messages.filter(message => message.role === "user" && Array.isArray(message.content))).toHaveLength(1);
+    expect(JSON.stringify(request.tools?.find(tool => tool.name === "click")?.inputSchema)).toContain('"coordinates"');
+    if (turn === 1) {
+      const feedback = request.messages.at(-2);
+      expect(feedback?.role).toBe("tool");
+      if (feedback?.role === "tool") {
+        const result = JSON.parse(feedback.content);
+        expect(result.status).toBe("succeeded");
+        expect(result.observation).toContain("Created Ada");
+      }
+    }
     const calls = [
       { id: "1", name: "click", arguments: { target: { by: "role", role: "button", name: "Create" } } },
       { id: "2", name: "done", arguments: { reason: "Created" } },
@@ -78,14 +113,6 @@ test("runner executes one action, done and independent proof", async () => {
     return { provider: "fake", model: "fake", text: "", toolCalls: [calls[turn++]!] };
   } };
   try {
-    const scenario = parseScenario({ name: "create", startUrl: `http://localhost:${server.port}/`, instruction: "Click Create", proof: [
-      { type: "text_visible", text: "Created Ada" },
-      { type: "text_not_visible", text: "Missing customer" },
-      { type: "url_contains", value: `localhost:${server.port}` },
-      { type: "element_visible", target: { by: "role", role: "button", name: "Create" } },
-      { type: "element_text", target: { by: "role", role: "button", name: "Create" }, equals: "Create" },
-      { type: "judge", text: "The page confirms Ada was created" },
-    ] });
     const report = await runScenario(scenario, provider, new PlaywrightEnvironment({ tracePath: join(directory, "trace.zip") }), directory);
     expect(report.result).toBe("passed");
     expect(report.steps).toBe(2);
@@ -100,6 +127,9 @@ test("runner executes one action, done and independent proof", async () => {
     reviewerStatus = "not_satisfied";
     const failed = await runScenario(scenario, provider, new PlaywrightEnvironment(), join(directory, "failed"));
     expect(failed.result).toBe("verification_failed");
+    expect(failed.execution.status).toBe("done");
+    expect(failed.verification.status).toBe("failed");
+    expect(turn).toBe(2);
     expect(failed.proofResults.slice(0, 5).every(proof => proof.passed)).toBe(true);
     expect(failed.proofResults[5]).toMatchObject({ passed: false, status: "not_satisfied" });
   } finally { server.stop(true); await rm(directory, { recursive: true, force: true }); }
@@ -111,7 +141,7 @@ test("runner stops repeated actions without visible progress", async () => {
   let calls = 0;
   const provider: LLMProvider = { name: "fake", async generate() {
     calls++;
-    return { provider: "fake", model: "fake", text: "", toolCalls: [{ id: String(calls), name: "click", arguments: { target: { by: "role", role: "button", name: "Retry" } } }] };
+    return { provider: "fake", model: "fake", text: "", toolCalls: [{ id: String(calls), name: "scroll", arguments: { deltaY: 1 } }] };
   } };
   try {
     const scenario = parseScenario({ name: "stalled", startUrl: `http://localhost:${server.port}/`, instruction: "Complete the task", proof: [{ type: "text_visible", text: "Complete" }], maxSteps: 100 });
@@ -124,6 +154,49 @@ test("runner stops repeated actions without visible progress", async () => {
     expect(report.proofResults).toEqual([]);
     expect((await readFile(join(directory, "actions.jsonl"), "utf8")).trim().split("\n")).toHaveLength(5);
   } finally { server.stop(true); await rm(directory, { recursive: true, force: true }); }
+});
+
+test("repeated click waits for a delayed screen instead of clicking twice", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "qawarness-click-guard-"));
+  let screen = "Before";
+  let clicks = 0;
+  let turn = 0;
+  const environment: QAEnvironment = {
+    async start() {}, async navigate() {}, async close() {},
+    async act(action) {
+      if (action.type === "click") {
+        clicks++;
+        setTimeout(() => { screen = "After"; }, 600);
+      }
+      return { success: true };
+    },
+    async observe() { return { platform: "web", location: {}, text: screen, elements: [], errors: [] }; },
+    async inspect() { return { count: 0, elements: [] }; },
+    async screenshot(path) { await Bun.write(path, ""); },
+  };
+  const provider: LLMProvider = { name: "fake", async generate(request) {
+    if (turn === 2) {
+      const result = request.messages.at(-2);
+      expect(result?.role === "tool" && JSON.parse(result.content).status).toBe("deferred");
+      expect(request.messages.at(-1)?.role === "user" && JSON.stringify(request.messages.at(-1)?.content)).toContain("After");
+    }
+    const calls = [
+      { id: "1", name: "click", arguments: { target: { by: "role", role: "button", name: "Open" } } },
+      { id: "2", name: "click", arguments: { target: { by: "role", role: "button", name: "Open" } } },
+      { id: "3", name: "done", arguments: { reason: "After is visible" } },
+    ];
+    return { provider: "fake", model: "fake", text: "", toolCalls: [calls[turn++]!] };
+  } };
+  try {
+    const scenario = parseScenario({ name: "delayed", startUrl: "http://localhost/", instruction: "Open", proof: [{ type: "text_visible", text: "After" }] });
+    const report = await runScenario(scenario, provider, environment, directory);
+    expect(report.result).toBe("passed");
+    expect(clicks).toBe(1);
+    expect(report.steps).toBe(3);
+    const actions = (await readFile(join(directory, "actions.jsonl"), "utf8")).trim().split("\n").map(line => JSON.parse(line).action);
+    expect(actions.map(action => action.type)).toEqual(["click", "wait", "done"]);
+    expect(actions[1]).toEqual({ type: "wait", milliseconds: 1500, reason: "pending_click" });
+  } finally { await rm(directory, { recursive: true, force: true }); }
 });
 
 test("runner caps scenario requests at 200 steps and 90 minutes", async () => {
