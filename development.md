@@ -65,8 +65,14 @@ failed proof.
 ## Verification and diagnosis
 
 Prefer deterministic proof. Use a model judgment for criteria that cannot be
-expressed reliably with deterministic checks. A visual judgment receives the
+expressed reliably with deterministic checks. A visual judgment starts with the
 final screenshot and bounded action and observation history through `LLMProvider`.
+It can page through recorded actions and observation text, list screenshot IDs,
+and retrieve earlier screenshots through read-only evidence tools. The model
+never selects filesystem paths or receives an environment or shell. Only the
+latest requested image is sent per turn. Record inspected evidence and review
+tool transcripts without image bytes. Bound review turns; proof review shares
+the scenario deadline.
 Only a satisfied judgment passes; missing visual evidence cannot pass. Keep
 screenshots as files and store references, not image bytes, in MongoDB.
 
@@ -79,6 +85,17 @@ Keep execution status, proof results, and diagnosis separate. Diagnosis uses
 with a reason and evidence references. A failed proof alone is inconclusive; do
 not claim a product defect without evidence. `done` never implies a pass.
 
+After the environment closes, investigate otherwise inconclusive failures with
+recorded steps using the same read-only evidence tools. This separate, bounded
+model review may refine diagnosis, but cannot change execution status or proof
+results, resume the app, or declare a failed run passed. Preserve the baseline
+diagnosis if investigation fails, and record that failure separately. Skip
+automatic investigation when the scenario duration is exhausted or the cause is
+already established. Keep the runner heartbeat alive through investigation and
+final persistence. The CLI can investigate a completed local failure later;
+write each such review as a separate artifact without rewriting the original
+report or MongoDB history. Investigation completion is not a QA pass.
+
 Jev and mobile execution remain future extensions. Do not add them or broader
 model autonomy before a current requirement needs them.
 
@@ -86,9 +103,12 @@ model autonomy before a current requirement needs them.
 
 Record actions, outcomes, timing, normalized observations, and relevant errors
 outside the platform adapter. Append JSONL so earlier steps survive a crash.
-Capture screenshots for failed actions and `done`; retain the Playwright trace as
+Associate each execution step with the screenshot supplied to the agent before
+its action. Capture screenshots after failed actions and `done`; retain the Playwright trace as
 detailed fallback evidence. Mask standard password inputs. Images can still
 contain private app data, so keep them as local run artifacts.
+Legacy observation screenshot references may precede their action; expose that
+timing uncertainty instead of relabeling them as screenshots after the action.
 
 MongoDB stores structured run history behind `RunStore`; the filesystem stores
 screenshots, traces, JSONL, and portable reports. Scenario definitions are

@@ -70,7 +70,8 @@ test("agent receives all proof criteria and done starts independent verification
     { type: "judge", text: "The page confirms Ada was created" },
   ] });
   const provider: LLMProvider = { name: "fake", async generate(request) {
-    if (!request.tools) {
+    if (request.tools?.some(tool => tool.name === "finish_investigation")) return { provider: "fake", model: "reviewer", text: "", toolCalls: [{ id: "investigate", name: "finish_investigation", arguments: { classification: "inconclusive", reason: "Insufficient evidence", proofIndexes: [], errorIndexes: [] } }] };
+    if (request.tools?.some(tool => tool.name === "finish_review")) {
       expect(turn).toBe(2);
       const user = request.messages[1];
       expect(user?.role).toBe("user");
@@ -80,7 +81,7 @@ test("agent receives all proof criteria and done starts independent verification
         const evidence = user.content[0];
         expect(evidence?.type === "text" && JSON.parse(evidence.text).actionHistory.map((step: { sequence: number }) => step.sequence)).toEqual([1, 2]);
       }
-      return { provider: "fake", model: "reviewer", text: JSON.stringify({ status: reviewerStatus, reason: "Evidence checked." }) };
+      return { provider: "fake", model: "reviewer", text: "", toolCalls: [{ id: "review", name: "finish_review", arguments: { status: reviewerStatus, reason: "Evidence checked." } }] };
     }
     const task = request.messages[1];
     expect(task?.role === "user" && typeof task.content === "string").toBe(true);
@@ -147,7 +148,7 @@ test("runner stops repeated actions without visible progress", async () => {
   } };
   try {
     const scenario = parseScenario({ name: "stalled", startUrl: `http://localhost:${server.port}/`, instruction: "Complete the task", proof: [{ type: "text_visible", text: "Complete" }], maxSteps: 100 });
-    const report = await runScenario(scenario, provider, new PlaywrightEnvironment(), directory);
+    const report = await runScenario(scenario, provider, new PlaywrightEnvironment(), directory, { investigateFailures: false });
     expect(report.result).toBe("stalled");
     expect(report.steps).toBe(5);
     expect(calls).toBe(5);
@@ -210,7 +211,7 @@ test("runner caps scenario requests at 200 steps and 90 minutes", async () => {
   } };
   try {
     const scenario = parseScenario({ name: "limits", startUrl: "http://localhost/", instruction: "Keep going", proof: [{ type: "text_visible", text: "Done" }], maxSteps: 5000, maxDuration: "2h" });
-    const report = await runScenario(scenario, provider, changingEnvironment(), directory);
+    const report = await runScenario(scenario, provider, changingEnvironment(), directory, { investigateFailures: false });
     expect(report.result).toBe("max_steps");
     expect(report.steps).toBe(200);
     expect(calls).toBe(200);
@@ -310,5 +311,6 @@ test("repeat runs reset a stateful app and temporal proof rejects a preexisting 
     expect(misleading.verification.status).toBe("failed");
     expect(misleading.proofResults[0]).toMatchObject({ passed: false, observed: { finalVisible: true } });
     expect(misleading.diagnosis.classification).toBe("inconclusive");
+    expect(misleading.investigation?.status).toBe("failed");
   } finally { server.stop(true); await rm(directory, { recursive: true, force: true }); }
 });

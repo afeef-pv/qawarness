@@ -25,6 +25,7 @@ export interface RunRecord {
   execution?: RunReport["execution"];
   verification?: RunReport["verification"];
   diagnosis?: RunReport["diagnosis"];
+  investigation?: RunReport["investigation"];
   limits?: RunReport["limits"];
   completion?: { reason?: string };
   proofResults?: RunReport["proofResults"];

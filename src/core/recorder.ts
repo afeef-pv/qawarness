@@ -13,6 +13,7 @@ export interface ExecutionRecord {
   error?: string;
   evidenceError?: string;
   screenshot?: string;
+  beforeScreenshot?: string;
   observation?: QAObservation;
   inspection?: { count: number; elements: import("./environment").QAElement[] };
 }

@@ -52,7 +52,7 @@ export class MongoRunStore implements RunStore {
   async finishRun(runId: string, report: RunReport): Promise<void> {
     const result = await this.db.collection<RunRecord & { _id: string }>("runs").updateOne({ _id: runId, status: "running" }, { $set: {
       status: report.result, finishedAt: new Date(report.finishedAt), stepCount: report.steps,
-      execution: report.execution, verification: report.verification, diagnosis: report.diagnosis,
+      execution: report.execution, verification: report.verification, diagnosis: report.diagnosis, investigation: report.investigation,
       context: report.context,
       completion: { reason: report.completionReason }, proofResults: report.proofResults,
       initialObservation: report.initialObservation, finalObservation: report.finalObservation, errors: report.errors, artifacts: report.artifacts,

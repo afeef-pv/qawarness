@@ -8,17 +8,18 @@ import { LLMError, type LLMProvider } from "./llm/provider";
 import { JsonlRecorder } from "./recorder";
 import type { ExecutionRecord } from "./recorder";
 import { reviewJudgeProof } from "./reviewer";
+import { investigateRecordedFailure, saveInvestigation, type RunInvestigation } from "./investigator";
 import { parseDurationMs, type QAScenario } from "./scenario";
 import { redactScenario, scenarioContentHash, type RunStore } from "./run-store";
 import { verifyProof, type ProofResult } from "./verifier";
 export type RunStatus = "passed" | "verification_failed" | "max_steps" | "max_duration" | "stalled" | "agent_protocol_error" | "reviewer_protocol_error" | "provider_failure" | "harness_failure";
 export interface RunContext { applicationRevision?: string; fixture?: string; harnessRevision?: string; modelSettings: { temperature: number }; environment?: { version?: string; viewport?: { width: number; height: number } } }
-export interface RunReport { runId: string; scenario: QAScenario; scenarioContentHash: string; agent: { provider: string; model: string }; limits: { maxSteps: number; maxDurationMs: number }; context: RunContext; startedAt: string; finishedAt: string; result: RunStatus; execution: { status: AgentResult["status"] | "unavailable" }; verification: { status: "not_run" | "incomplete" | "passed" | "failed" }; diagnosis: RunDiagnosis; steps: number; completionReason?: string; proofResults: ProofResult[]; initialObservation?: QAObservation; finalObservation?: QAObservation; errors: string[]; artifacts: Record<string, string> }
-export interface RunOptions { store?: RunStore; source?: { type: "file"; path: string }; agentModel?: string; backend?: string; context?: Omit<RunContext, "modelSettings" | "environment"> }
+export interface RunReport { runId: string; scenario: QAScenario; scenarioContentHash: string; agent: { provider: string; model: string }; limits: { maxSteps: number; maxDurationMs: number }; context: RunContext; startedAt: string; finishedAt: string; result: RunStatus; execution: { status: AgentResult["status"] | "unavailable" }; verification: { status: "not_run" | "incomplete" | "passed" | "failed" }; diagnosis: RunDiagnosis; investigation?: RunInvestigation; steps: number; completionReason?: string; proofResults: ProofResult[]; initialObservation?: QAObservation; finalObservation?: QAObservation; errors: string[]; artifacts: Record<string, string> }
+export interface RunOptions { investigateFailures?: boolean; store?: RunStore; source?: { type: "file"; path: string }; agentModel?: string; backend?: string; context?: Omit<RunContext, "modelSettings" | "environment"> }
 export async function runScenario(scenario: QAScenario, provider: LLMProvider, environment: QAEnvironment, runDirectory: string, options: RunOptions = {}): Promise<RunReport> {
   const limits = { maxSteps: Math.min(scenario.maxSteps, 200), maxDurationMs: Math.min(scenario.maxDuration ? parseDurationMs(scenario.maxDuration) : 90 * 60_000, 90 * 60_000) };
   const runId = runDirectory.split("/").at(-1) ?? runDirectory;
-  const artifacts = { actions: join(runDirectory, "actions.jsonl"), report: join(runDirectory, "report.json"), initialObservation: join(runDirectory, "initial-observation.json"), observation: join(runDirectory, "final-observation.json"), screenshot: join(runDirectory, "final.png"), trace: join(runDirectory, "trace.zip") };
+  const artifacts = { actions: join(runDirectory, "actions.jsonl"), report: join(runDirectory, "report.json"), initialObservation: join(runDirectory, "initial-observation.json"), observation: join(runDirectory, "final-observation.json"), screenshot: join(runDirectory, "final.png"), trace: join(runDirectory, "trace.zip"), review: join(runDirectory, "review.jsonl") };
   const safeScenario = redactScenario(scenario);
   const report: RunReport = { runId, scenario: safeScenario, scenarioContentHash: scenarioContentHash(scenario), agent: { provider: provider.name, model: options.agentModel ?? "unknown" }, limits, context: { ...options.context, modelSettings: { temperature: 0 } }, startedAt: new Date().toISOString(), finishedAt: "", result: "harness_failure", execution: { status: "unavailable" }, verification: { status: "not_run" }, diagnosis: { classification: "inconclusive", reason: "Run is still in progress.", evidence: { stepSequences: [], proofIndexes: [], errorIndexes: [], screenshots: [] } }, steps: 0, proofResults: [], errors: [], artifacts };
   if (options.store) {
@@ -85,7 +86,7 @@ export async function runScenario(scenario: QAScenario, provider: LLMProvider, e
       for (const proof of scenario.proof) {
         if (proof.type === "judge") reviewing = true;
         report.proofResults.push(proof.type === "judge"
-          ? await reviewJudgeProof(proof, scenario.instruction, observation, history, provider, controller.signal, artifacts.screenshot)
+          ? await reviewJudgeProof(proof, scenario.instruction, observation, history, provider, controller.signal, artifacts.screenshot, report.initialObservation)
           : deterministicResults.next().value!);
         if (controller.signal.aborted) throw new Error("Run exceeded its duration limit");
         reviewing = false;
@@ -103,20 +104,31 @@ export async function runScenario(scenario: QAScenario, provider: LLMProvider, e
       : error instanceof LLMError ? "provider_failure" : "harness_failure";
   } finally {
     clearTimeout(durationTimer);
-    if (heartbeatTimer) clearInterval(heartbeatTimer);
-    await heartbeatPending;
     if (!screenshotCaptured) try { await environment.screenshot(artifacts.screenshot); } catch (error) { report.errors.push(`screenshot: ${String(error)}`); }
     try { report.finalObservation = await environment.observe(); await writeFile(artifacts.observation, JSON.stringify(report.finalObservation, null, 2)); } catch (error) { report.errors.push(`observation: ${String(error)}`); }
     try { await environment.close(); } catch (error) { report.errors.push(`close: ${String(error)}`); }
     report.finishedAt = new Date().toISOString();
     if (report.finalObservation) report.errors.push(...report.finalObservation.errors);
     report.diagnosis = diagnoseRun(report.result, report.proofResults, history, report.errors);
+    if (options.investigateFailures !== false && report.diagnosis.classification === "inconclusive" && history.length && report.result !== "max_duration") {
+      report.investigation = await investigateRecordedFailure(report, history, runDirectory, provider, { transcript: join(runDirectory, "investigation.jsonl"), instruction: scenario.instruction });
+      if (report.investigation.diagnosis) report.diagnosis = report.investigation.diagnosis;
+      try {
+        const path = join(runDirectory, "investigation.json");
+        await saveInvestigation(path, report.investigation);
+        report.artifacts.investigation = path;
+        report.artifacts.investigationLog = join(runDirectory, "investigation.jsonl");
+      } catch (error) { report.errors.push(`investigation persistence: ${String(error)}`); }
+    }
+    report.finishedAt = new Date().toISOString();
     try { await writeFile(artifacts.report, JSON.stringify(report, null, 2)); } catch (error) { executionError ??= error; }
     if (options.store) {
       try { await options.store.finishRun(runId, report); } catch (error) {
         persistenceError ??= new Error("MongoDB run finalization failed", { cause: error });
       }
     }
+    if (heartbeatTimer) clearInterval(heartbeatTimer);
+    await heartbeatPending;
   }
   if (persistenceError) throw persistenceError;
   if (executionError && !report.errors.length) throw executionError;

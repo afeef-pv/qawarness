@@ -14,7 +14,7 @@ export class QAExecutor {
     private readonly captureEvidence?: (record: ExecutionRecord) => Promise<string>,
   ) {}
 
-  async execute(action: QAExecutionAction): Promise<ExecutionRecord> {
+  async execute(action: QAExecutionAction, beforeScreenshot?: string): Promise<ExecutionRecord> {
     if (this.completed) {
       throw new Error("Execution is already done");
     }
@@ -27,6 +27,7 @@ export class QAExecutor {
       startedAt,
       durationMs: 0,
       status: "succeeded",
+      ...(beforeScreenshot ? { beforeScreenshot } : {}),
     };
 
     if (action.type === "done") {

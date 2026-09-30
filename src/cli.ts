@@ -1,10 +1,12 @@
-import { readdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, readdir, readFile, realpath } from "node:fs/promises";
+import { isAbsolute, join, relative } from "node:path";
 import { scenarioContentHash } from "./core/run-store";
 import { loadScenario, parseDurationMs } from "./core/scenario";
 import { defineScenario, definitionPath } from "./definitions";
 import { runQa } from "./qa";
 import { runRepeat } from "./repeat";
+import { investigateRecordedFailure, loadRecordedRun, saveInvestigation } from "./core/investigator";
+import { createLLMProvider } from "./llm/create-provider";
 
 type LocalReport = {
   runId: string;
@@ -28,6 +30,7 @@ Commands:
   validate <scenario.yaml|name> Check a scenario without starting a browser or model
   runs list                 List local completed runs
   runs show <run-id>        Show a local run report
+  runs investigate <run-id> Investigate a recorded failure without running the app
 
 Run "bun run qawarness <command> --help" for command options.
 Other scripts: bun run dashboard, bun run db:init, bun run smoke, bun run llm:smoke.`;
@@ -50,11 +53,15 @@ Exit 0 when every attempt passes, 1 on completed non-passing runs, 2 on a comman
   validate: `Usage: bun run qawarness validate <scenario.yaml|name> [--json]
 
 Checks a scenario and prints its name, effective limits, proof count, and content hash.`,
-  runs: `Usage: bun run qawarness runs <list|show> [options]
+  runs: `Usage: bun run qawarness runs <list|show|investigate> [options]
 
 Commands:
   list [--limit <1..100>] [--json]  List local completed reports (default: 20)
-  show <run-id> [--json]          Show one local report`,
+  show <run-id> [--json]          Show one local report
+  investigate <run-id> [--json]   Review a recorded failure using the configured model
+
+Investigation writes a separate artifact; the original report stays unchanged.
+Exit 0 when investigation completes (including inconclusive), 1 if review fails, 2 on invalid input/setup.`,
 };
 
 class UsageError extends Error {}
@@ -206,6 +213,26 @@ export async function main(args: string[]): Promise<number> {
           console.log(options["--json"] ? JSON.stringify(items) : items.length ? items.map(item => `${item.startedAt}  ${item.result.padEnd(19)}  ${item.scenario}  ${item.runId}`).join("\n") : "No local completed runs.");
           return 0;
         }
+        if (action === "investigate") {
+          const { positional, options } = parse(args.slice(2), { "--json": "boolean" });
+          const id = onePath(positional, "run ID");
+          if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(id)) throw new UsageError("Invalid run ID");
+          const root = await realpath("runs");
+          const directory = await realpath(join(root, id));
+          const within = relative(root, directory);
+          if (within.startsWith("..") || isAbsolute(within)) throw new UsageError("Run directory is outside local runs");
+          const { report, history } = await loadRecordedRun(directory);
+          if (report.runId !== id) throw new UsageError("Recorded run ID does not match its directory");
+          if (report.result === "passed") throw new UsageError("Only non-passing runs can be investigated");
+          const provider = createLLMProvider();
+          const destination = join(directory, "investigations", crypto.randomUUID());
+          await mkdir(destination, { recursive: true });
+          const investigation = await investigateRecordedFailure(report, history, directory, provider, { transcript: join(destination, "review.jsonl") });
+          const path = join(destination, "investigation.json");
+          await saveInvestigation(path, investigation);
+          console.log(options["--json"] ? JSON.stringify({ runId: id, path, ...investigation }) : `Run: ${id}\nInvestigation: ${investigation.status}\nDiagnosis: ${investigation.diagnosis?.classification ?? "unavailable"}\nReason: ${investigation.diagnosis?.reason ?? investigation.error}\nArtifact: ${path}`);
+          return investigation.status === "completed" ? 0 : 1;
+        }
         if (action === "show") {
           const { positional, options } = parse(args.slice(2), { "--json": "boolean" });
           const id = onePath(positional, "run ID");
@@ -223,7 +250,7 @@ export async function main(args: string[]): Promise<number> {
           console.log(options["--json"] ? JSON.stringify(report) : display(report));
           return 0;
         }
-        throw new UsageError("Expected runs list or runs show <run-id>");
+        throw new UsageError("Expected runs list, runs show <run-id>, or runs investigate <run-id>");
       }
     }
   } catch (error) {

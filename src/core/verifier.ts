@@ -3,7 +3,7 @@ import type { QAProof } from "./scenario";
 import type { ExecutionRecord } from "./recorder";
 export type DeterministicProof = Exclude<QAProof, { type: "judge" }>;
 export type ProofResult = { proof: DeterministicProof; passed: boolean; observed: unknown }
-  | { proof: Extract<QAProof, { type: "judge" }>; passed: boolean; status: "satisfied" | "not_satisfied" | "inconclusive"; reason: string; reviewer: { provider: string; model: string }; evidence: { screenshot?: string; stepSequences: number[] } };
+  | { proof: Extract<QAProof, { type: "judge" }>; passed: boolean; status: "satisfied" | "not_satisfied" | "inconclusive"; reason: string; reviewer: { provider: string; model: string }; evidence: { screenshot?: string; stepSequences: number[]; screenshots?: string[] } };
 export async function verifyProof(proofs: DeterministicProof[], environment: QAEnvironment, observation: QAObservation,
   history: ExecutionRecord[] = [], initialObservation?: QAObservation): Promise<{ passed: boolean; results: ProofResult[] }> {
   const results: ProofResult[] = [];

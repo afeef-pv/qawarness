@@ -98,7 +98,7 @@ export async function runAgent(scenario: QAScenario, environment: QAEnvironment,
       if (pendingClick.waitedMs >= 12_000) return { status: "stalled", stopReason: "The same click was withheld because its previous attempt produced no confirmed screen change after 12 seconds.", steps, finalObservation: observation };
       const waitMs = 1_500;
       steps++;
-      const record = await executor.execute({ type: "wait", milliseconds: waitMs, reason: "pending_click" });
+      const record = await executor.execute({ type: "wait", milliseconds: waitMs, reason: "pending_click" }, screenshotPath);
       pendingClick.waitedMs += waitMs;
       lastClickSucceeded = false;
       observation = record.observation ?? await environment.observe();
@@ -111,7 +111,7 @@ export async function runAgent(scenario: QAScenario, environment: QAEnvironment,
     if (action.type !== "wait") pendingClick = undefined;
     const stateBeforeAction = visibleState(observation);
     steps++;
-    const record: ExecutionRecord = await executor.execute(action);
+    const record: ExecutionRecord = await executor.execute(action, screenshotPath);
     lastClickSucceeded = action.type === "click" && record.status === "succeeded";
     if (limits.signal.aborted) return { status: "max_duration", steps, finalObservation: record.observation ?? observation };
     if (action.type === "done") return { status: "done", completionReason: action.reason, steps, finalObservation: record.observation ?? observation };

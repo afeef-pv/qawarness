@@ -4,7 +4,7 @@ import { basename, resolve } from "node:path";
 import { connectMongoRunStore } from "../persistence/mongo/client";
 
 const artifactFiles: Record<string, string> = {
-  screenshot: "final.png", report: "report.json", actions: "actions.jsonl", initialObservation: "initial-observation.json", observation: "final-observation.json", trace: "trace.zip",
+  screenshot: "final.png", report: "report.json", actions: "actions.jsonl", initialObservation: "initial-observation.json", observation: "final-observation.json", trace: "trace.zip", review: "review.jsonl", investigation: "investigation.json", investigationLog: "investigation.jsonl",
 };
 const runIdPattern = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 const interruptedGraceMs = 5 * 60_000;
@@ -55,7 +55,7 @@ export async function createDashboardServer(options: { port?: number; hostname?:
           const latestStep = await mongo.store.getLatestRunStep(run.id);
           const currentObservation = observation(run.finalObservation) ?? observation(latestStep?.observation);
           return json({ ...runSummary(run, currentObservation), completion: run.completion, limits: run.limits, environment: run.environment,
-            execution: run.execution, verification: run.verification, diagnosis: run.diagnosis, context: run.context,
+            execution: run.execution, verification: run.verification, diagnosis: run.diagnosis, investigation: run.investigation, context: run.context,
             scenarioDefinition: definition ? { id: definition.id, name: definition.name, version: definition.version, description: definition.description, startUrl: definition.startUrl, instruction: definition.instruction, proof: definition.proof, maxSteps: definition.maxSteps, maxDuration: definition.maxDuration } : { ...run.scenarioSnapshot, name: run.scenario.name, version: run.scenario.version },
             proofResults: run.proofResults ?? [], errors: run.errors ?? [], initialObservation: observation(run.initialObservation), finalObservation: observation(run.finalObservation), currentObservation,
             artifacts: Object.entries(artifactFiles).filter(([, filename]) => existsSync(resolve(runsDirectory, run.id, filename))).map(([key, filename]) => ({ key, filename, url: `/api/runs/${encodeURIComponent(run.id)}/artifacts/${key}` })),

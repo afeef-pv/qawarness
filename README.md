@@ -75,6 +75,7 @@ bun run qawarness repeat <scenario.yaml|name> --count <1..20> --reset-url <url> 
 bun run qawarness validate <scenario.yaml|name> [--json]
 bun run qawarness runs list [--limit <1..100>] [--json]
 bun run qawarness runs show <run-id> [--json]
+bun run qawarness runs investigate <run-id> [--json]
 ```
 
 `define` accepts explicit plain-text wording and writes a runnable
@@ -97,7 +98,7 @@ bun run qawarness run sign-in
 
 Each command has `--help`. `validate` checks the scenario without a browser, model
 key, or database. `run`, `repeat`, and `validate` accept a YAML path or the name
-of the latest definition. `runs` reads local completed reports from `runs/`;
+of the latest definition. `runs list` and `runs show` read local reports from `runs/`;
 `--json` is available for scripts. The `qa` and `qa:repeat` scripts remain
 aliases for `run` and `repeat`.
 
@@ -130,10 +131,14 @@ The execution agent sees all proof criteria alongside the instruction and app
 observations. It uses them to decide when to call `done`. The verifier independently
 checks the proof after `done`; failed verification ends the run without resuming
 execution.
-For `judge` proof, the reviewer receives the final screenshot, recent normalized
-observations, and action history after `done`. The screenshot is sent to the
-configured model provider. The run report records the screenshot path and step
-numbers used as evidence; it does not embed image bytes.
+For `judge` proof, the reviewer starts with the final screenshot, recent normalized
+observations, and action history after `done`. It can retrieve earlier actions,
+page through recorded observation text, list screenshots, and inspect selected
+images using read-only tools. Screenshots are sent to the configured model provider.
+Only the latest requested image is included per request. Reviews are limited to
+12 model turns and the scenario deadline. The report records inspected screenshot
+paths and step numbers; `review.jsonl` records retrievals and judgments without
+embedding image bytes.
 
 Temporal checks can require an observed transition, rather than matching text that
 was already present on the starting page:
@@ -152,6 +157,27 @@ action and the `done` step each keep a screenshot beside their recorded observat
 The run also records execution, verification, and a separate evidence-backed diagnosis.
 An unsatisfied proof is classified as `inconclusive` until the evidence establishes a
 more specific cause.
+
+Otherwise inconclusive failures with recorded steps are investigated automatically
+after the browser closes, using the same read-only evidence tools. Investigation
+has a separate 60-second and 12-turn budget. It can refine the diagnosis to
+`product_failure`, `agent_failure`, `harness_failure`, or `inconclusive`; it cannot
+change pass/fail, proof results, or operate the app. A review failure preserves the
+baseline diagnosis and is recorded in `investigation.json`. Established diagnoses
+and runs that exhausted their duration are not investigated automatically.
+
+To investigate an older failure without starting the app or browser:
+
+```bash
+bun run qawarness runs investigate <run-id> --json
+```
+
+This uses the configured model and local `report.json`, `actions.jsonl`, and
+screenshots. Each invocation writes separate artifacts under
+`runs/<run-id>/investigations/<review-id>/`, preserving the original report and
+database history. Exit 0 means investigation completed (including inconclusive),
+1 means review failed, and 2 means invalid input or setup. It does not mean the
+QA scenario passed. Missing evidence is reported; the reviewer cannot invent it.
 
 ## Repeat a scenario
 
@@ -184,7 +210,7 @@ written only after every attempt completes. It refuses to combine runs whose sce
 application revision, fixture, model, or environment context differs. For a single
 `bun run qa`, optional `QA_APP_REVISION` and `QA_FIXTURE` values are recorded with the run.
 
-Runs stop after at most 200 agent steps or 90 minutes. A scenario can request
+Execution and proof verification stop after at most 200 agent steps or 90 minutes. A scenario can request
 lower limits with `maxSteps` and `maxDuration`.
 
 `done` means:
@@ -222,7 +248,10 @@ runs/<run-id>/
 ├── final-observation.json
 ├── final.png
 ├── steps/<sequence>-failed.png  # when an action fails
-└── trace.zip
+├── trace.zip
+├── review.jsonl                # judge proof review, when used
+├── investigation.json         # automatic failure investigation, when used
+└── investigation.jsonl        # investigation evidence access, when used
 ```
 
 ## Setup
@@ -277,6 +306,6 @@ bun run qawarness run scenarios/example.yaml --headed
 
 Web first.
 
-Mobile, visual QA, and deeper diagnosis later.
+Mobile and deeper platform diagnostics later.
 
 See `development.md`.

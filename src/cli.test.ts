@@ -114,3 +114,48 @@ test("CLI lists and shows local completed reports", async () => {
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test("CLI investigates an old failure through recorded evidence and preserves its original report", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "qawarness-cli-investigate-"));
+  let requests = 0, unavailable = false;
+  const model = Bun.serve({ port: 0, async fetch(request) {
+    requests++;
+    if (unavailable) return Response.json({ error: { message: "Offline" } }, { status: 503 });
+    const body = await request.json() as { tools: { function: { name: string } }[]; messages: { role: string }[] };
+    expect(body.tools.map(tool => tool.function.name)).toContain("read_steps");
+    expect(body.tools.map(tool => tool.function.name)).not.toContain("click");
+    const read = !body.messages.some(message => message.role === "tool");
+    return Response.json({ model: "fake-reviewer", choices: [{ message: { content: null, tool_calls: [{ id: String(requests), type: "function", function: {
+      name: read ? "read_steps" : "finish_investigation", arguments: JSON.stringify(read ? { from: 1, count: 1 } : { classification: "agent_failure", reason: "Step 1 stopped without saving", proofIndexes: [0], errorIndexes: [] }),
+    } }] } }] });
+  } });
+  try {
+    const id = "old-failure", run = join(directory, "runs", id);
+    await mkdir(run, { recursive: true });
+    const original = JSON.stringify({ runId: id, result: "verification_failed", startedAt: "2026-09-01T00:00:00Z", finishedAt: "2026-09-01T00:01:00Z",
+      scenario: { name: "save", startUrl: "http://localhost/", instruction: "Save", maxSteps: 30, proof: [{ type: "text_visible", text: "Saved" }] },
+      proofResults: [{ proof: { type: "text_visible", text: "Saved" }, passed: false, observed: false }], errors: [] });
+    await writeFile(join(run, "report.json"), original);
+    await writeFile(join(run, "actions.jsonl"), JSON.stringify({ sequence: 1, action: { type: "done", reason: "Saved" }, status: "done", durationMs: 1, startedAt: "2026-09-01T00:00:00Z" }) + "\n");
+    await writeFile(join(run, "final.png"), "image bytes");
+    const invokeReview = async () => {
+      const child = Bun.spawn(["bun", "run", cli, "runs", "investigate", id, "--json"], { cwd: directory,
+        env: { ...process.env, DEEPSEEK_API_KEY: "fake-key", DEEPSEEK_BASE_URL: `http://127.0.0.1:${model.port}`, MONGODB_URI: "" }, stdout: "pipe", stderr: "pipe" });
+      const [stdout, stderr, exit] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
+      expect(stderr).toBe("");
+      return { value: JSON.parse(stdout), exit };
+    };
+    const first = await invokeReview();
+    expect(first.exit).toBe(0);
+    expect(first.value).toMatchObject({ status: "completed", diagnosis: { classification: "agent_failure", evidence: { stepSequences: [1] } }, reviewer: { model: "fake-reviewer" } });
+    expect(JSON.parse(await readFile(first.value.path, "utf8"))).toMatchObject({ status: "completed" });
+    expect(await readFile(join(run, "report.json"), "utf8")).toBe(original);
+    unavailable = true;
+    const second = await invokeReview();
+    expect(second.exit).toBe(1);
+    expect(second.value.status).toBe("failed");
+    expect(second.value.path).not.toBe(first.value.path);
+    expect(await readFile(join(run, "report.json"), "utf8")).toBe(original);
+    expect((await invoke(["runs", "investigate", "../outside"], directory)).exit).toBe(2);
+  } finally { model.stop(true); await rm(directory, { recursive: true, force: true }); }
+});
