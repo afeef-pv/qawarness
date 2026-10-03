@@ -96,3 +96,20 @@ describe("DeepSeekProvider", () => {
       .rejects.toMatchObject({ kind: "malformed_response" });
   });
 });
+
+test("thinking tool requests replay adapter continuation with compatible tool choice", async () => {
+  const bodies: any[] = [];
+  const provider = new DeepSeekProvider({ apiKey: "secret-key", reasoning: "high", model: "deepseek-v4-pro", fetch: async (_url, init) => {
+    bodies.push(JSON.parse(String(init?.body)));
+    return Response.json({ model: "returned-model", choices: [{ message: { content: null, reasoning_content: "opaque continuation", tool_calls: [{ id: "one", function: { name: "read_steps", arguments: '{}' } }] } }] });
+  } });
+  const tools = [{ name: "read_steps", description: "Read", inputSchema: {} }];
+  const response = await provider.generate({ messages: [{ role: "user", content: "Review" }], tools });
+  await provider.generate({ messages: [{ role: "assistant", content: "", toolCalls: response.toolCalls, continuation: response.continuation }, { role: "tool", toolCallId: "one", content: "evidence" }], tools });
+  expect(bodies[0].thinking).toEqual({ type: "enabled" });
+  expect(bodies[0].tool_choice).toBe("auto");
+  expect(bodies[0].reasoning_effort).toBe("high");
+  expect(bodies[0].temperature).toBeUndefined();
+  expect(bodies[1].messages[0].reasoning_content).toBe("opaque continuation");
+  expect(JSON.stringify(provider.settings)).not.toContain("secret-key");
+});

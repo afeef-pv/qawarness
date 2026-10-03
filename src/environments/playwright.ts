@@ -7,6 +7,7 @@ import {
   type BrowserContext,
   type Locator,
   type Page,
+  type Request,
 } from "playwright";
 
 import type { QAAction, QAActionOutcome, SemanticTarget } from "../core/actions";
@@ -14,6 +15,7 @@ import type {
   QAElement,
   QAEnvironment,
   QAObservation,
+  QADiagnostic,
 } from "../core/environment";
 
 export class PlaywrightEnvironment implements QAEnvironment {
@@ -23,6 +25,10 @@ export class PlaywrightEnvironment implements QAEnvironment {
   private page?: Page;
 
   private errors: string[] = [];
+  private diagnostics: QADiagnostic[] = [];
+  private requests = new WeakMap<Request, { id: string; startedAt: string }>();
+  private nextRequest = 0;
+  private screenshotCapturedAt?: string;
   private lastScreenshotPath?: string;
 
   async start(): Promise<void> {
@@ -54,6 +60,7 @@ export class PlaywrightEnvironment implements QAEnvironment {
     // Treat a navigation as the beginning of a fresh observation period.
     this.errors = [];
     this.lastScreenshotPath = undefined;
+    this.screenshotCapturedAt = undefined;
 
     await page.goto(url, {
       waitUntil: "domcontentloaded",
@@ -150,6 +157,8 @@ export class PlaywrightEnvironment implements QAEnvironment {
       screenshot: this.lastScreenshotPath,
 
       errors: [...this.errors],
+      diagnostics: [...this.diagnostics],
+      screenshotCapturedAt: this.screenshotCapturedAt,
     };
   }
 
@@ -167,6 +176,7 @@ export class PlaywrightEnvironment implements QAEnvironment {
     });
 
     this.lastScreenshotPath = path;
+    this.screenshotCapturedAt = new Date().toISOString();
   }
 
   async runtimeInfo(): Promise<{ version: string; viewport?: { width: number; height: number } }> {
@@ -244,17 +254,29 @@ export class PlaywrightEnvironment implements QAEnvironment {
   }
 
   private attachDiagnostics(page: Page): void {
-    page.on("console", (message) => {
-      if (message.type() === "error") {
-        this.errors.push(`console: ${message.text()}`);
-      }
+    // Omit all query values, credentials and fragments. Never capture bodies or headers.
+    const safeUrl = (value: string) => {
+      try { const url = new URL(value); url.username = ""; url.password = ""; url.search = ""; url.hash = ""; return url.href.slice(0, 1000); }
+      catch { return "[unavailable URL]"; }
+    };
+    const record = (kind: QADiagnostic["kind"], message: string, request?: Request, status?: number) => {
+      const identity = request ? this.requests.get(request) : undefined;
+      this.diagnostics.push({ schemaVersion: 1, id: `diagnostic-${this.diagnostics.length + 1}`, source: "application",
+        occurredAt: new Date().toISOString(), kind, message: message.slice(0, 1000),
+        ...(request && identity ? { request: { ...identity, method: request.method(), url: safeUrl(request.url()), ...(status === undefined ? {} : { status }) } } : {}) });
+    };
+    page.on("request", request => this.requests.set(request, { id: `request-${++this.nextRequest}`, startedAt: new Date().toISOString() }));
+    page.on("response", response => {
+      if (response.status() >= 400) record("http_error", `HTTP ${response.status()}`, response.request(), response.status());
     });
-
-    page.on("pageerror", (error) => {
-      this.errors.push(`pageerror: ${error.message}`);
+    page.on("console", message => {
+      if (message.type() === "error") { this.errors.push(`console: ${message.text()}`); record("console_error", "Browser console error (see recorded errors)"); }
     });
-    page.on("requestfailed", (request) => {
-      this.errors.push(`requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ""}`);
+    page.on("pageerror", error => { this.errors.push(`pageerror: ${error.message}`); record("page_error", "Uncaught application error (see recorded errors)"); });
+    page.on("requestfailed", request => {
+      const message = `requestfailed: ${request.method()} ${safeUrl(request.url())} ${request.failure()?.errorText ?? ""}`;
+      this.errors.push(message);
+      record("transport_failure", request.failure()?.errorText ?? "Transport failure", request);
     });
   }
 

@@ -1,0 +1,53 @@
+{
+  "runId": "provider-outage",
+  "finishedAt": "2026-01-01T00:00:10.000Z",
+  "scenario": {
+    "name": "provider-outage",
+    "startUrl": "http://fixture.invalid/",
+    "instruction": "Enter Example in Title, click Save, and observe Saved confirmation.",
+    "proof": [
+      {
+        "type": "text_visible",
+        "text": "Saved"
+      }
+    ]
+  },
+  "result": "provider_failure",
+  "execution": {
+    "status": "done"
+  },
+  "verification": {
+    "status": "failed"
+  },
+  "proofResults": [
+    {
+      "proof": {
+        "type": "text_visible",
+        "text": "Saved"
+      },
+      "passed": false,
+      "reason": "Required confirmation not established"
+    }
+  ],
+  "errors": [
+    "Provider request failed"
+  ],
+  "initialObservation": {
+    "platform": "web",
+    "location": {
+      "url": "http://fixture.invalid/"
+    },
+    "text": "Title: Example. Unsaved. Save; Cancel",
+    "elements": [],
+    "errors": []
+  },
+  "finalObservation": {
+    "platform": "web",
+    "location": {
+      "url": "http://fixture.invalid/"
+    },
+    "text": "Provider unavailable",
+    "elements": [],
+    "errors": []
+  }
+}

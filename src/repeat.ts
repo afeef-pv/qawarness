@@ -5,7 +5,7 @@ import { runScenario } from "./core/runner";
 import { loadScenario } from "./core/scenario";
 import { scenarioContentHash } from "./core/run-store";
 import { PlaywrightEnvironment } from "./environments/playwright";
-import { createLLMProvider } from "./llm/create-provider";
+import { createLLMProvider, createInvestigationProvider } from "./llm/create-provider";
 import { connectMongoRunStore } from "./persistence/mongo/client";
 import { harnessRevision } from "./run-context";
 
@@ -34,6 +34,7 @@ export async function runRepeat({ scenarioPath, count, resetUrl, applicationRevi
     let mongo: Awaited<ReturnType<typeof connectMongoRunStore>> | undefined;
     try {
       const provider = createLLMProvider();
+    const investigationProvider = createInvestigationProvider();
       mongo = Bun.env.MONGODB_URI ? await connectMongoRunStore(Bun.env.MONGODB_URI, Bun.env.MONGODB_DB || "qawarness") : undefined;
       const summary = await repeatScenario(scenario, count, async index => {
         const runId = runIdFor(index);
@@ -59,7 +60,7 @@ export async function runRepeat({ scenarioPath, count, resetUrl, applicationRevi
         await record({ type: "run_started", attempt: index + 1, runId });
         try {
           const report = await runScenario(scenario, provider, new PlaywrightEnvironment({ headed, tracePath: join(directory, "trace.zip") }), directory,
-            { store: mongo?.store, source: { type: "file", path: scenarioPath }, agentModel: Bun.env.DEEPSEEK_MODEL || "deepseek-flash", backend: "playwright",
+            { investigationProvider, store: mongo?.store, source: { type: "file", path: scenarioPath }, agentModel: Bun.env.DEEPSEEK_MODEL || "deepseek-flash", backend: "playwright",
               context: { applicationRevision, fixture, harnessRevision: harnessRevision() } });
           await record({ type: "run_finished", attempt: index + 1, runId, result: report.result, diagnosis: report.diagnosis.classification });
           return report;

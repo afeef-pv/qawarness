@@ -29,6 +29,7 @@ export interface EvidenceInput {
 }
 
 export const evidenceTools: LLMTool[] = [
+  { name: "read_diagnostics", description: "Read timestamped diagnostic events; request timing is not a causal assignment.", inputSchema: { type: "object", properties: { offset: { type: "integer", minimum: 0 } }, required: ["offset"] } },
   { name: "read_steps", description: "Read a page of recorded actions, outcomes, errors and inspection results. No actions are executed.", inputSchema: { type: "object", properties: { from: { type: "integer", minimum: 1 }, count: { type: "integer", minimum: 1, maximum: 10 } }, required: ["from", "count"] } },
   { name: "read_observation", description: "Read recorded observation text in pages, with elements and errors. sequence 0 means initial, -1 means final, otherwise a recorded step.", inputSchema: { type: "object", properties: { sequence: { type: "integer", minimum: -1 }, offset: { type: "integer", minimum: 0 } }, required: ["sequence", "offset"] } },
   { name: "list_screenshots", description: "List recorded screenshot IDs and their timing. Use IDs with view_screenshot; never supply a file path.", inputSchema: { type: "object", properties: { offset: { type: "integer", minimum: 0 } }, required: ["offset"] } },
@@ -36,7 +37,20 @@ export const evidenceTools: LLMTool[] = [
 ];
 
 export class RecordedEvidence {
+  readonly readDiagnostics = new Set<string>();
+  get diagnostics() {
+    const events = new Map<string, import("./environment").QADiagnostic>();
+    for (const observation of [this.input.initialObservation, ...this.input.history.map(r => r.observation), this.input.finalObservation])
+      for (const event of observation?.diagnostics ?? []) if (!events.has(event.id)) events.set(event.id, event);
+    return [...events.values()];
+  }
   readonly steps = new Set<number>();
+  readonly readSteps = new Set<number>();
+  readonly observationRanges = new Map<number, { start: number; end: number }[]>();
+  readonly viewedIds = new Set<string>();
+  private recordRange(sequence: number, start: number, end: number) {
+    this.observationRanges.set(sequence, [...(this.observationRanges.get(sequence) ?? []), { start, end }]);
+  }
   readonly viewedScreenshots = new Set<string>();
   readonly screenshots: { id: string; path: string; timing: string; sequence?: number }[] = [];
 
@@ -61,6 +75,7 @@ export class RecordedEvidence {
     if (!info.isFile() || info.size > 20 * 1024 * 1024) throw new Error("Recorded screenshot exceeds the 20 MiB evidence limit or is not a file");
     const bytes = await readFile(path);
     this.viewedScreenshots.add(entry.path);
+    this.viewedIds.add(id);
     if (entry.sequence) this.steps.add(entry.sequence);
     return { type: "image", dataUrl: `data:image/png;base64,${bytes.toString("base64")}`, detail: "original" };
   }
@@ -73,11 +88,20 @@ export class RecordedEvidence {
     };
     let value: unknown;
     switch (name) {
+      case "read_diagnostics": {
+        const offset = integer(args.offset, 0), events = this.diagnostics.slice(offset, offset + 20);
+        events.forEach(event => this.readDiagnostics.add(event.id));
+        value = { total: this.diagnostics.length, events, next: offset + events.length < this.diagnostics.length ? offset + events.length : null };
+        break;
+      }
       case "read_steps": {
         const from = integer(args.from, 1), count = integer(args.count, 1, 10);
         const records = this.input.history.filter(record => record.sequence >= from).slice(0, count);
-        records.forEach(record => this.steps.add(record.sequence));
-        value = { total: this.input.history.length, next: records.length ? records.at(-1)!.sequence + 1 : null, steps: records.map(({ observation, ...record }) => ({ ...record, ...(observation ? { observation: { location: observation.location, textPreview: observation.text.slice(0, 1000), errors: observation.errors } } : {}) })) };
+        records.forEach(record => {
+          this.steps.add(record.sequence); this.readSteps.add(record.sequence);
+          if (record.observation) this.recordRange(record.sequence, 0, Math.min(1000, record.observation.text.length));
+        });
+        value = { total: this.input.history.length, next: records.length ? records.at(-1)!.sequence + 1 : null, steps: records.map(({ observation, ...record }) => ({ ...record, ...(observation ? { observation: { location: observation.location, textPreview: observation.text.slice(0, 1000), errors: observation.errors, diagnostics: observation.diagnostics?.slice(0, 20), screenshotCapturedAt: observation.screenshotCapturedAt } } : {}) })) };
         break;
       }
       case "read_observation": {
@@ -85,7 +109,8 @@ export class RecordedEvidence {
         const observation = sequence === 0 ? this.input.initialObservation : sequence === -1 ? this.input.finalObservation : this.input.history.find(record => record.sequence === sequence)?.observation;
         if (!observation) throw new Error("Recorded observation unavailable");
         if (sequence > 0) this.steps.add(sequence);
-        value = { sequence, location: observation.location, text: observation.text.slice(offset, offset + 4000), totalTextLength: observation.text.length, elements: observation.elements.slice(0, 80), errors: observation.errors };
+        this.recordRange(sequence, offset, Math.min(offset + 4000, observation.text.length));
+        value = { sequence, location: observation.location, text: observation.text.slice(offset, offset + 4000), totalTextLength: observation.text.length, elements: observation.elements.slice(0, 80), errors: observation.errors, diagnostics: observation.diagnostics?.slice(0, 20), screenshotCapturedAt: observation.screenshotCapturedAt };
         break;
       }
       case "list_screenshots": {
@@ -107,7 +132,7 @@ export class RecordedEvidence {
 // It never receives a QAEnvironment, shell, or model-selected filesystem path.
 export async function runEvidenceReview(
   evidence: RecordedEvidence, provider: LLMProvider,
-  options: { system: string; summary: string; finish: LLMTool; signal?: AbortSignal; transcript?: string; includeFinalImage?: boolean },
+  options: { system: string; summary: string; finish: LLMTool; signal?: AbortSignal; transcript?: string; includeFinalImage?: boolean; maxTurns?: number },
 ) {
   const safe = (text: string) => redactEvidence(text, evidence.input.instruction);
   const messages: LLMMessage[] = [{ role: "system", content: options.system }, { role: "user", content: safe(options.summary) }];
@@ -116,8 +141,8 @@ export async function runEvidenceReview(
   const log = async (value: unknown) => {
     if (options.transcript) await appendFile(options.transcript, safe(JSON.stringify(value)) + "\n");
   };
-  await log({ event: "review_started", summary: options.summary, screenshot: currentImage ? evidence.input.screenshot : undefined });
-  for (let turn = 0; turn < 12; turn++) {
+  await log({ event: "review_started", system: options.system, summary: options.summary, screenshot: currentImage ? evidence.input.screenshot : undefined });
+  for (let turn = 0; turn < (options.maxTurns ?? 12); turn++) {
     options.signal?.throwIfAborted();
     // Retain text history, but send only the latest requested image on each turn.
     const requestMessages: LLMMessage[] = currentImage
@@ -135,7 +160,7 @@ export async function runEvidenceReview(
       await log({ turn, tool: call.name, arguments: call.arguments, provider: response.provider, model: response.model });
       return { value: call.arguments, reviewer: { provider: response.provider, model: response.model } };
     }
-    messages.push({ role: "assistant", content: safe(response.text), toolCalls: [{ ...call, arguments: object(call.arguments) ? JSON.parse(safe(JSON.stringify(call.arguments))) : {} }] });
+    messages.push({ role: "assistant", content: safe(response.text), continuation: response.continuation, toolCalls: [{ ...call, arguments: object(call.arguments) ? JSON.parse(safe(JSON.stringify(call.arguments))) : {} }] });
     let result;
     try { result = await evidence.read(call.name, call.arguments); }
     catch (error) { result = { text: safe(JSON.stringify({ error: error instanceof Error ? error.message : String(error) })) }; }
@@ -145,5 +170,5 @@ export async function runEvidenceReview(
     messages.push({ role: "tool", toolCallId: call.id, content: result.text });
     currentImage = result.image;
   }
-  throw new LLMError("Reviewer exhausted its 12-turn evidence budget", "malformed_response", provider.name);
+  throw new LLMError(`Reviewer exhausted its ${options.maxTurns ?? 12}-turn evidence budget`, "malformed_response", provider.name);
 }

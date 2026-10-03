@@ -1,0 +1,1 @@
+{"sequence": 1, "action": {"type": "fill", "target": {"label": "Search"}, "value": "Example"}, "startedAt": "2026-01-01T00:00:01.000Z", "durationMs": 10, "status": "succeeded", "observation": {"platform": "web", "location": {"url": "http://fixture.invalid/"}, "text": "Search: Example. Title: empty", "elements": [], "errors": []}}

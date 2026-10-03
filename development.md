@@ -96,6 +96,33 @@ final persistence. The CLI can investigate a completed local failure later;
 write each such review as a separate artifact without rewriting the original
 report or MongoDB history. Investigation completion is not a QA pass.
 
+Completed failure investigations add a versioned primary finding, separating
+expected behavior, observation, cause, alternatives, and unknowns. Claim citations
+must name content actually supplied or successfully retrieved: action records,
+viewed screenshot IDs, retrieved diagnostic IDs, returned observation text ranges, or summary proof/error
+indexes. The broad access ledger remains separate. Invalid findings fail review
+and preserve the baseline; provenance does not establish causal truth.
+
+Failure investigation starts with a bounded, deterministic event index of recorded
+actions, outcomes, times, URL changes, newly recorded application errors, failed
+proof indexes, and screenshot IDs with their original timing. These entries are
+retrieval starting points, not causes or access to full records. Review compares
+surrounding states and a plausible alternative; missing distinguishing evidence
+remains explicit. Legacy benchmark review keeps its previous input contract.
+Imported histories beyond the normal step cap disclose omitted index events;
+the original read-only paging tools still expose the complete recording.
+
+The explicit `investigation:eval` Bun command reviews checked-in portable fixtures
+without starting an app or browser. Labels and previous reviews are excluded;
+baseline diagnosis is recomputed. It compares the legacy and structured output
+contracts on identical fingerprinted evidence, saving unique attempts outside
+normal run history. Missing declared artifacts fail preflight; intentionally
+absent final images must be declared. Classification counts are automatic, while
+claim support and unsupported causes require human transcript review. Unknown
+usage and monetary cost are unavailable, never zero. The initial controlled
+text-only suite is a mechanics and attribution starting point, not evidence of
+real-world or visual accuracy.
+
 Jev and mobile execution remain future extensions. Do not add them or broader
 model autonomy before a current requirement needs them.
 
@@ -146,3 +173,62 @@ end time or diagnosis. Keep dashboard tests about behavior, not presentation.
   typechecks and the smallest meaningful tests or smoke checks, and inspect
   produced artifacts when they matter. Fix failures and update this file if a
   durable decision changed.
+
+## Diagnostic evidence and investigation configuration
+
+Optional version-1 application diagnostics supplement observation errors. HTTP
+responses >=400 do not participate in existing no-error proofs; transport,
+console and page errors retain their existing error behavior. Diagnostics retain
+run-local event/request IDs, occurrence and request-start times across navigation
+and repeated observations. The adapter removes URL credentials, query strings
+and fragments and records no headers or bodies. Screenshot observations include
+actual capture completion timestamps. Event/action interval overlap is a timing
+relationship, never causal attribution. Read-only diagnostic paging grants citation
+access independently of the timeline; legacy absence means unavailable evidence.
+
+Failure investigation alone accepts an independently composed provider. Execution
+and judge proof keep their original provider. Operator environment overrides are
+`QA_REVIEWER_MODEL`, `QA_REVIEWER_REASONING` (none/low/high/max),
+`QA_REVIEWER_TEMPERATURE`, and `QA_REVIEWER_MAX_TOKENS`; credentials and endpoint
+reuse DeepSeek configuration. Defaults retain non-thinking tool review. Thinking
+uses automatic tool choice and opaque adapter continuation replay; continuation
+is kept only in memory, not transcripts. Effective sampling records null when
+thinking ignores temperature. Each attempt records role, original run, requested
+and returned models, settings, prompt/evidence hashes, budgets, calls and available
+usage. Unknown cost remains null. Budget exhaustion fails review and preserves
+the baseline.
+
+`investigation:eval ... --compare-reviewer` compares default and overridden reviewer
+settings with the same structured contract and identical recordings. Optional
+`--max-turns` and `--max-duration-ms` change only the comparison budget. Without
+that flag the legacy-versus-structured contract comparison remains available.
+Change one setting at a time to isolate effects; classification metrics do not
+establish citation support, which still requires human review. Live comparisons
+are explicit and no improvement is asserted from fake-provider tests.
+
+## Attribution and uncertainty
+
+Failure investigation uses attribution rubric v1. Product findings require positive
+incorrect application behavior in the required workflow; agent findings require an
+incorrect action or premature completion; harness findings require infrastructure,
+provider, recording or verifier evidence. Missing, contradictory or indistinguishable
+evidence remains inconclusive. Symptoms, temporal proximity and proof failure do
+not establish an internal cause. UI confirmation alone does not establish persistence.
+
+New structured investigations use finding contract version 2 with the existing
+fields. Attributed findings must separately cite observed behavior, cause support
+beyond proof results, and content assessing a plausible alternative. Inconclusive
+findings keep cause null, explain unknowns and identify distinguishing needed
+evidence. These requirements enforce provenance and a reviewable explanation,
+not causal truth. Invalid findings fail review and preserve baseline diagnosis;
+no correction or new execution is attempted. Existing version-1 reports remain
+readable and immutable. Attempt metadata records rubric and prompt versions;
+review transcripts include the system instructions for human inspection.
+
+`investigation:eval ... --compare-attribution-rubric` compares the prior structured
+contract and the rubric on identical recordings with the same provider and budgets.
+It cannot combine reviewer-setting or budget changes. Automatic metrics count
+classification and false product claims; support and unsupported internal causes
+still require separate human review. Background HTTP errors and ambiguous clicks
+have controlled development cases; no real-model accuracy improvement is claimed
+from scripted contract tests.

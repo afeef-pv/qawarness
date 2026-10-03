@@ -15,7 +15,7 @@ import { verifyProof, type ProofResult } from "./verifier";
 export type RunStatus = "passed" | "verification_failed" | "max_steps" | "max_duration" | "stalled" | "agent_protocol_error" | "reviewer_protocol_error" | "provider_failure" | "harness_failure";
 export interface RunContext { applicationRevision?: string; fixture?: string; harnessRevision?: string; modelSettings: { temperature: number }; environment?: { version?: string; viewport?: { width: number; height: number } } }
 export interface RunReport { runId: string; scenario: QAScenario; scenarioContentHash: string; agent: { provider: string; model: string }; limits: { maxSteps: number; maxDurationMs: number }; context: RunContext; startedAt: string; finishedAt: string; result: RunStatus; execution: { status: AgentResult["status"] | "unavailable" }; verification: { status: "not_run" | "incomplete" | "passed" | "failed" }; diagnosis: RunDiagnosis; investigation?: RunInvestigation; steps: number; completionReason?: string; proofResults: ProofResult[]; initialObservation?: QAObservation; finalObservation?: QAObservation; errors: string[]; artifacts: Record<string, string> }
-export interface RunOptions { investigateFailures?: boolean; store?: RunStore; source?: { type: "file"; path: string }; agentModel?: string; backend?: string; context?: Omit<RunContext, "modelSettings" | "environment"> }
+export interface RunOptions { investigationProvider?: LLMProvider; investigateFailures?: boolean; store?: RunStore; source?: { type: "file"; path: string }; agentModel?: string; backend?: string; context?: Omit<RunContext, "modelSettings" | "environment"> }
 export async function runScenario(scenario: QAScenario, provider: LLMProvider, environment: QAEnvironment, runDirectory: string, options: RunOptions = {}): Promise<RunReport> {
   const limits = { maxSteps: Math.min(scenario.maxSteps, 200), maxDurationMs: Math.min(scenario.maxDuration ? parseDurationMs(scenario.maxDuration) : 90 * 60_000, 90 * 60_000) };
   const runId = runDirectory.split("/").at(-1) ?? runDirectory;
@@ -111,7 +111,7 @@ export async function runScenario(scenario: QAScenario, provider: LLMProvider, e
     if (report.finalObservation) report.errors.push(...report.finalObservation.errors);
     report.diagnosis = diagnoseRun(report.result, report.proofResults, history, report.errors);
     if (options.investigateFailures !== false && report.diagnosis.classification === "inconclusive" && history.length && report.result !== "max_duration") {
-      report.investigation = await investigateRecordedFailure(report, history, runDirectory, provider, { transcript: join(runDirectory, "investigation.jsonl"), instruction: scenario.instruction });
+      report.investigation = await investigateRecordedFailure(report, history, runDirectory, options.investigationProvider ?? provider, { transcript: join(runDirectory, "investigation.jsonl"), instruction: scenario.instruction });
       if (report.investigation.diagnosis) report.diagnosis = report.investigation.diagnosis;
       try {
         const path = join(runDirectory, "investigation.json");

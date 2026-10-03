@@ -11,6 +11,16 @@ export interface QAElement {
   enabled: boolean;
 }
 
+export interface QADiagnostic {
+  schemaVersion: 1;
+  id: string;
+  source: "application";
+  occurredAt: string;
+  kind: "http_error" | "transport_failure" | "console_error" | "page_error";
+  message: string;
+  request?: { id: string; startedAt: string; method: string; url: string; status?: number };
+}
+
 export interface QAObservation {
   platform: Platform;
 
@@ -27,6 +37,8 @@ export interface QAObservation {
   screenshot?: string;
 
   errors: string[];
+  diagnostics?: QADiagnostic[];
+  screenshotCapturedAt?: string;
 }
 
 export interface QAEnvironment {

@@ -1,0 +1,1 @@
+{"sequence": 1, "action": {"type": "done", "reason": "Ready"}, "startedAt": "2026-01-01T00:00:01.000Z", "durationMs": 10, "status": "done", "observation": {"platform": "web", "location": {"url": "http://fixture.invalid/"}, "text": "Saved; Unsaved", "elements": [], "errors": []}}

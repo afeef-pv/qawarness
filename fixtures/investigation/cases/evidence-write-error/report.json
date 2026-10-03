@@ -1,0 +1,53 @@
+{
+  "runId": "evidence-write-error",
+  "finishedAt": "2026-01-01T00:00:10.000Z",
+  "scenario": {
+    "name": "evidence-write-error",
+    "startUrl": "http://fixture.invalid/",
+    "instruction": "Enter Example in Title, click Save, and observe Saved confirmation.",
+    "proof": [
+      {
+        "type": "text_visible",
+        "text": "Saved"
+      }
+    ]
+  },
+  "result": "harness_failure",
+  "execution": {
+    "status": "done"
+  },
+  "verification": {
+    "status": "failed"
+  },
+  "proofResults": [
+    {
+      "proof": {
+        "type": "text_visible",
+        "text": "Saved"
+      },
+      "passed": false,
+      "reason": "Required confirmation not established"
+    }
+  ],
+  "errors": [
+    "step 1 screenshot: disk full"
+  ],
+  "initialObservation": {
+    "platform": "web",
+    "location": {
+      "url": "http://fixture.invalid/"
+    },
+    "text": "Title: Example. Unsaved. Save; Cancel",
+    "elements": [],
+    "errors": []
+  },
+  "finalObservation": {
+    "platform": "web",
+    "location": {
+      "url": "http://fixture.invalid/"
+    },
+    "text": "Screenshot recording failed",
+    "elements": [],
+    "errors": []
+  }
+}

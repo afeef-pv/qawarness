@@ -126,7 +126,7 @@ test("CLI investigates an old failure through recorded evidence and preserves it
     expect(body.tools.map(tool => tool.function.name)).not.toContain("click");
     const read = !body.messages.some(message => message.role === "tool");
     return Response.json({ model: "fake-reviewer", choices: [{ message: { content: null, tool_calls: [{ id: String(requests), type: "function", function: {
-      name: read ? "read_steps" : "finish_investigation", arguments: JSON.stringify(read ? { from: 1, count: 1 } : { classification: "agent_failure", reason: "Step 1 stopped without saving", proofIndexes: [0], errorIndexes: [] }),
+      name: read ? "read_steps" : "finish_investigation", arguments: JSON.stringify(read ? { from: 1, count: 1 } : { classification: "agent_failure", reason: "Step 1 stopped without saving", proofIndexes: [0], errorIndexes: [], finding: { expected: "Save", observed: "Unsaved", cause: "Stopped before Save", alternativeExplanation: "Saved earlier", alternativeAssessment: "Only done recorded", unknowns: [], neededEvidence: [], citations: [{ claim: "observed", kind: "step", sequence: 1 }, { claim: "cause", kind: "step", sequence: 1 }, { claim: "alternative", kind: "step", sequence: 1 }] } }),
     } }] } }] });
   } });
   try {

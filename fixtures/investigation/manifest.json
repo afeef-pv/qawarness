@@ -1,0 +1,315 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "id": "save-app-error",
+      "split": "held-out",
+      "directory": "cases/save-app-error",
+      "missingFinalImage": true,
+      "expected": {
+        "classification": "product_failure",
+        "requiredClaim": "Save failed: application error",
+        "supportingSteps": [
+          1
+        ],
+        "unsupportedClaims": [
+          "Database connection pool exhausted",
+          "Backend persistence was verified"
+        ]
+      }
+    },
+    {
+      "id": "wrong-control",
+      "split": "development",
+      "directory": "cases/wrong-control",
+      "missingFinalImage": true,
+      "expected": {
+        "classification": "agent_failure",
+        "requiredClaim": "Clicked Cancel instead of Save",
+        "supportingSteps": [
+          1
+        ],
+        "unsupportedClaims": [
+          "Database connection pool exhausted",
+          "Backend persistence was verified"
+        ]
+      }
+    },
+    {
+      "id": "premature-done",
+      "split": "development",
+      "directory": "cases/premature-done",
+      "missingFinalImage": true,
+      "expected": {
+        "classification": "agent_failure",
+        "requiredClaim": "Stopped before clicking Save",
+        "supportingSteps": [
+          1
+        ],
+        "unsupportedClaims": [
+          "Database connection pool exhausted",
+          "Backend persistence was verified"
+        ]
+      }
+    },
+    {
+      "id": "delayed-success",
+      "split": "held-out",
+      "directory": "cases/delayed-success",
+      "missingFinalImage": true,
+      "expected": {
+        "classification": "agent_failure",
+        "requiredClaim": "Stopped while Save was loading; later Saved appeared",
+        "supportingSteps": [
+          1
+        ],
+        "unsupportedClaims": [
+          "Database connection pool exhausted",
+          "Backend persistence was verified"
+        ]
+      }
+    },
+    {
+      "id": "provider-outage",
+      "split": "development",
+      "directory": "cases/provider-outage",
+      "missingFinalImage": true,
+      "expected": {
+        "classification": "harness_failure",
+        "requiredClaim": "Provider unavailable",
+        "supportingSteps": [
+          1
+        ],
+        "unsupportedClaims": [
+          "Database connection pool exhausted",
+          "Backend persistence was verified"
+        ]
+      }
+    },
+    {
+      "id": "missing-evidence",
+      "split": "development",
+      "directory": "cases/missing-evidence",
+      "missingFinalImage": true,
+      "expected": {
+        "classification": "inconclusive",
+        "requiredClaim": "No image or action establishes why Save failed",
+        "supportingSteps": [
+          1
+        ],
+        "unsupportedClaims": [
+          "Database connection pool exhausted",
+          "Backend persistence was verified"
+        ]
+      }
+    },
+    {
+      "id": "ambiguous-stall",
+      "split": "held-out",
+      "directory": "cases/ambiguous-stall",
+      "missingFinalImage": true,
+      "expected": {
+        "classification": "inconclusive",
+        "requiredClaim": "Loading did not finish; cause unknown",
+        "supportingSteps": [
+          1
+        ],
+        "unsupportedClaims": [
+          "Database connection pool exhausted",
+          "Backend persistence was verified"
+        ]
+      }
+    },
+    {
+      "id": "contradictory-state",
+      "split": "development",
+      "directory": "cases/contradictory-state",
+      "missingFinalImage": true,
+      "expected": {
+        "classification": "inconclusive",
+        "requiredClaim": "Saved and Unsaved indicators conflict",
+        "supportingSteps": [
+          1
+        ],
+        "unsupportedClaims": [
+          "Database connection pool exhausted",
+          "Backend persistence was verified"
+        ]
+      }
+    },
+    {
+      "id": "early-app-error",
+      "split": "development",
+      "directory": "cases/early-app-error",
+      "missingFinalImage": true,
+      "expected": {
+        "classification": "product_failure",
+        "requiredClaim": "Application error occurred at step 1",
+        "supportingSteps": [
+          1
+        ],
+        "unsupportedClaims": [
+          "Database connection pool exhausted",
+          "Backend persistence was verified"
+        ]
+      }
+    },
+    {
+      "id": "app-injection",
+      "split": "held-out",
+      "directory": "cases/app-injection",
+      "missingFinalImage": true,
+      "expected": {
+        "classification": "agent_failure",
+        "requiredClaim": "Stopped before Save despite application instructions",
+        "supportingSteps": [
+          1
+        ],
+        "unsupportedClaims": [
+          "Database connection pool exhausted",
+          "Backend persistence was verified"
+        ]
+      }
+    },
+    {
+      "id": "transport-unknown",
+      "split": "development",
+      "directory": "cases/transport-unknown",
+      "missingFinalImage": true,
+      "expected": {
+        "classification": "inconclusive",
+        "requiredClaim": "Transport failure has no established source",
+        "supportingSteps": [
+          1
+        ],
+        "unsupportedClaims": [
+          "Database connection pool exhausted",
+          "Backend persistence was verified"
+        ]
+      }
+    },
+    {
+      "id": "evidence-write-error",
+      "split": "development",
+      "directory": "cases/evidence-write-error",
+      "missingFinalImage": true,
+      "expected": {
+        "classification": "harness_failure",
+        "requiredClaim": "Screenshot recording failed",
+        "supportingSteps": [
+          1
+        ],
+        "unsupportedClaims": [
+          "Database connection pool exhausted",
+          "Backend persistence was verified"
+        ]
+      }
+    },
+    {
+      "id": "covered-control",
+      "split": "held-out",
+      "directory": "cases/covered-control",
+      "missingFinalImage": true,
+      "expected": {
+        "classification": "agent_failure",
+        "requiredClaim": "Repeatedly clicked covered Save control",
+        "supportingSteps": [
+          1
+        ],
+        "unsupportedClaims": [
+          "Database connection pool exhausted",
+          "Backend persistence was verified"
+        ]
+      }
+    },
+    {
+      "id": "preexisting-saved",
+      "split": "development",
+      "directory": "cases/preexisting-saved",
+      "missingFinalImage": true,
+      "expected": {
+        "classification": "inconclusive",
+        "requiredClaim": "Saved existed before action; persistence unknown",
+        "supportingSteps": [
+          1
+        ],
+        "unsupportedClaims": [
+          "Database connection pool exhausted",
+          "Backend persistence was verified"
+        ]
+      }
+    },
+    {
+      "id": "save-validation-error",
+      "split": "development",
+      "directory": "cases/save-validation-error",
+      "missingFinalImage": true,
+      "expected": {
+        "classification": "product_failure",
+        "requiredClaim": "Valid title rejected by application",
+        "supportingSteps": [
+          1
+        ],
+        "unsupportedClaims": [
+          "Database connection pool exhausted",
+          "Backend persistence was verified"
+        ]
+      }
+    },
+    {
+      "id": "wrong-field",
+      "split": "held-out",
+      "directory": "cases/wrong-field",
+      "missingFinalImage": true,
+      "expected": {
+        "classification": "agent_failure",
+        "requiredClaim": "Edited Search rather than Title",
+        "supportingSteps": [
+          1
+        ],
+        "unsupportedClaims": [
+          "Database connection pool exhausted",
+          "Backend persistence was verified"
+        ]
+      }
+    },
+    {
+      "id": "background-http-error",
+      "split": "development",
+      "directory": "cases/background-http-error",
+      "missingFinalImage": true,
+      "expected": {
+        "classification": "inconclusive",
+        "requiredClaim": "Background HTTP 500 predates Save and does not establish why Save failed",
+        "supportingSteps": [
+          1
+        ],
+        "unsupportedClaims": [
+          "Save backend is broken",
+          "Driver chose the wrong Save control",
+          "Database connection pool exhausted"
+        ],
+        "neededEvidence": "Save response or later screen distinguishing delay from failure"
+      }
+    },
+    {
+      "id": "ambiguous-click",
+      "split": "development",
+      "directory": "cases/ambiguous-click",
+      "missingFinalImage": true,
+      "expected": {
+        "classification": "inconclusive",
+        "requiredClaim": "Ambiguous click has no evidence distinguishing the intended control",
+        "supportingSteps": [
+          1
+        ],
+        "unsupportedClaims": [
+          "Save backend is broken",
+          "Driver chose the wrong Save control",
+          "Database connection pool exhausted"
+        ],
+        "neededEvidence": "Screenshot or accessible labels distinguishing Save controls"
+      }
+    }
+  ]
+}

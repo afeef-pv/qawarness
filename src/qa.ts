@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { loadScenario } from "./core/scenario";
 import { runScenario } from "./core/runner";
 import { PlaywrightEnvironment } from "./environments/playwright";
-import { createLLMProvider } from "./llm/create-provider";
+import { createLLMProvider, createInvestigationProvider } from "./llm/create-provider";
 import { connectMongoRunStore } from "./persistence/mongo/client";
 import { harnessRevision } from "./run-context";
 
@@ -10,12 +10,13 @@ export async function runQa(scenarioPath: string, headed = false): Promise<numbe
   try {
     const scenario = await loadScenario(scenarioPath);
     const provider = createLLMProvider();
+    const investigationProvider = createInvestigationProvider();
     const runId = `${new Date().toISOString().replaceAll(":", "-").replaceAll(".", "-")}-${scenario.name.replace(/[^a-zA-Z0-9_-]/g, "-")}-${crypto.randomUUID().slice(0, 8)}`;
     const directory = join("runs", runId);
     const mongo = Bun.env.MONGODB_URI ? await connectMongoRunStore(Bun.env.MONGODB_URI, Bun.env.MONGODB_DB || "qawarness") : undefined;
     try {
       const report = await runScenario(scenario, provider, new PlaywrightEnvironment({ headed, tracePath: join(directory, "trace.zip") }), directory,
-        { store: mongo?.store, source: { type: "file", path: scenarioPath }, agentModel: Bun.env.DEEPSEEK_MODEL || "deepseek-flash", backend: "playwright",
+        { investigationProvider, store: mongo?.store, source: { type: "file", path: scenarioPath }, agentModel: Bun.env.DEEPSEEK_MODEL || "deepseek-flash", backend: "playwright",
           context: { applicationRevision: Bun.env.QA_APP_REVISION, fixture: Bun.env.QA_FIXTURE, harnessRevision: harnessRevision() } });
       console.log(`Scenario: ${scenario.name}\nRun: ${runId}\nResult: ${report.result.toUpperCase()}\nDiagnosis: ${report.diagnosis.classification}\nSteps: ${report.steps}\nArtifacts: ${directory}\nPersistence: ${mongo ? "MongoDB" : "filesystem"}`);
       for (const proof of report.proofResults.filter(p => !p.passed)) console.log(`Failed proof: ${JSON.stringify(proof.proof)}${"reason" in proof ? ` — ${proof.status}: ${proof.reason}` : ""}`);

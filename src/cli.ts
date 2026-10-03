@@ -6,7 +6,7 @@ import { defineScenario, definitionPath } from "./definitions";
 import { runQa } from "./qa";
 import { runRepeat } from "./repeat";
 import { investigateRecordedFailure, loadRecordedRun, saveInvestigation } from "./core/investigator";
-import { createLLMProvider } from "./llm/create-provider";
+import { createInvestigationProvider } from "./llm/create-provider";
 
 type LocalReport = {
   runId: string;
@@ -224,7 +224,7 @@ export async function main(args: string[]): Promise<number> {
           const { report, history } = await loadRecordedRun(directory);
           if (report.runId !== id) throw new UsageError("Recorded run ID does not match its directory");
           if (report.result === "passed") throw new UsageError("Only non-passing runs can be investigated");
-          const provider = createLLMProvider();
+          const provider = createInvestigationProvider();
           const destination = join(directory, "investigations", crypto.randomUUID());
           await mkdir(destination, { recursive: true });
           const investigation = await investigateRecordedFailure(report, history, directory, provider, { transcript: join(destination, "review.jsonl") });

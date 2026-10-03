@@ -7,6 +7,9 @@ import {
 
 export interface DeepSeekConfig {
   apiKey: string;
+  reasoning?: "none" | "low" | "high" | "max";
+  temperature?: number;
+  maxTokens?: number;
   model?: string;
   baseUrl?: string;
   fetch?: (input: string, init?: RequestInit) => Promise<Response>;
@@ -14,6 +17,7 @@ export interface DeepSeekConfig {
 
 export class DeepSeekProvider implements LLMProvider {
   readonly name = "deepseek";
+  readonly settings: NonNullable<LLMProvider["settings"]>;
   private readonly apiKey: string;
   private readonly model: string;
   private readonly endpoint: string;
@@ -25,6 +29,11 @@ export class DeepSeekProvider implements LLMProvider {
     }
     this.apiKey = config.apiKey.trim();
     this.model = config.model?.trim() || "deepseek-flash";
+    const reasoning = config.reasoning ?? "none";
+    if (!["none", "low", "high", "max"].includes(reasoning)) throw new LLMError("Invalid reviewer reasoning", "configuration", this.name);
+    if (config.maxTokens !== undefined && (!Number.isSafeInteger(config.maxTokens) || config.maxTokens < 1 || config.maxTokens > 393216)) throw new LLMError("Invalid reviewer token budget", "configuration", this.name);
+    if (config.temperature !== undefined && (!Number.isFinite(config.temperature) || config.temperature < 0 || config.temperature > 2)) throw new LLMError("Invalid reviewer temperature", "configuration", this.name);
+    this.settings = { model: this.model, reasoning, temperature: reasoning === "none" ? config.temperature ?? 0 : null, ...(config.maxTokens ? { maxTokens: config.maxTokens } : {}) };
     const baseUrl = config.baseUrl?.trim() || "https://api.deepseek.com";
     try {
       const url = new URL(baseUrl);
@@ -60,15 +69,15 @@ export class DeepSeekProvider implements LLMProvider {
           messages: request.messages.map((message) => message.role === "tool"
             ? { role: "tool", tool_call_id: message.toolCallId, content: message.content }
             : message.role === "assistant" && message.toolCalls
-              ? { role: "assistant", content: message.content || null, tool_calls: message.toolCalls.map((call) => ({ id: call.id, type: "function", function: { name: call.name, arguments: JSON.stringify(call.arguments) } })) }
+              ? { role: "assistant", content: message.content || null, ...(typeof message.continuation === "string" ? { reasoning_content: message.continuation } : {}), tool_calls: message.toolCalls.map((call) => ({ id: call.id, type: "function", function: { name: call.name, arguments: JSON.stringify(call.arguments) } })) }
               : message.role === "user" && Array.isArray(message.content)
                 ? { role: "user", content: message.content.map((part) => part.type === "text"
                   ? { type: "text", text: part.text }
                   : { type: "image_url", image_url: { url: part.dataUrl, ...(part.detail ? { detail: part.detail } : {}) } }) }
                 : { role: message.role, content: message.content }),
-          ...(request.tools ? { thinking: { type: "disabled" }, tools: request.tools.map((tool) => ({ type: "function", function: { name: tool.name, description: tool.description, parameters: tool.inputSchema } })), tool_choice: "required", parallel_tool_calls: false } : {}),
-          ...(request.temperature === undefined ? {} : { temperature: request.temperature }),
-          ...(request.maxTokens === undefined ? {} : { max_tokens: request.maxTokens }),
+          ...(request.tools ? { thinking: { type: this.settings.reasoning === "none" ? "disabled" : "enabled" }, reasoning_effort: this.settings.reasoning, tools: request.tools.map((tool) => ({ type: "function", function: { name: tool.name, description: tool.description, parameters: tool.inputSchema } })), tool_choice: this.settings.reasoning === "none" ? "required" : "auto", parallel_tool_calls: false } : {}),
+          ...(this.settings.temperature === null ? {} : { temperature: this.settings.reasoning === "none" ? request.temperature ?? this.settings.temperature : this.settings.temperature }),
+          ...((this.settings.maxTokens ?? request.maxTokens) === undefined ? {} : { max_tokens: this.settings.maxTokens ?? request.maxTokens }),
           ...(request.responseFormat === undefined ? {} : {
             response_format: { type: request.responseFormat.type === "json" ? "json_object" : "text" },
           }),
@@ -117,6 +126,7 @@ export class DeepSeekProvider implements LLMProvider {
     return {
       provider: this.name,
       model: data.model,
+      ...(typeof message.reasoning_content === "string" ? { continuation: message.reasoning_content } : {}),
       text: typeof message.content === "string" ? message.content : "",
       ...(Array.isArray(calls) ? { toolCalls: calls.map((call) => {
         const tool = call as { id: string; function: { name: string; arguments: string } };

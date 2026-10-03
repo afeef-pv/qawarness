@@ -13,7 +13,8 @@
     "qa:repeat": "bun run src/cli.ts repeat",
     "db:init": "bun run src/persistence/mongo/init.ts",
     "dashboard": "bun run src/dashboard/server.ts",
-    "dashboard:build": "vite build --config apps/dashboard/vite.config.ts"
+    "dashboard:build": "vite build --config apps/dashboard/vite.config.ts",
+    "investigation:eval": "bun run src/investigation-eval.ts"
   },
   "devDependencies": {
     "@types/bun": "^1.4.2",

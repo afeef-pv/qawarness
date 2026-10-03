@@ -5,7 +5,7 @@ export type LLMContentPart =
 export type LLMMessage =
   | { role: "system"; content: string }
   | { role: "user"; content: string | LLMContentPart[] }
-  | { role: "assistant"; content: string; toolCalls?: LLMToolCall[] }
+  | { role: "assistant"; content: string; toolCalls?: LLMToolCall[]; continuation?: unknown }
   | { role: "tool"; content: string; toolCallId: string };
 
 export interface LLMTool {
@@ -35,6 +35,7 @@ export interface LLMResponse {
   text: string;
   toolCalls?: LLMToolCall[];
   finishReason?: string;
+  continuation?: unknown;
   usage?: {
     inputTokens?: number;
     outputTokens?: number;
@@ -44,6 +45,7 @@ export interface LLMResponse {
 
 export interface LLMProvider {
   readonly name: string;
+  readonly settings?: { model: string; reasoning: string; temperature: number | null; maxTokens?: number };
   generate(request: LLMRequest): Promise<LLMResponse>;
 }
 

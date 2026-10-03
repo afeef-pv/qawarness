@@ -1,0 +1,72 @@
+{
+  "runId": "save-app-error",
+  "finishedAt": "2026-01-01T00:00:10.000Z",
+  "scenario": {
+    "name": "save-app-error",
+    "startUrl": "http://fixture.invalid/",
+    "instruction": "Enter Example in Title, click Save, and observe Saved confirmation.",
+    "proof": [
+      {
+        "type": "text_visible",
+        "text": "Saved"
+      }
+    ]
+  },
+  "result": "verification_failed",
+  "execution": {
+    "status": "done"
+  },
+  "verification": {
+    "status": "failed"
+  },
+  "proofResults": [
+    {
+      "proof": {
+        "type": "text_visible",
+        "text": "Saved"
+      },
+      "passed": false,
+      "reason": "Required confirmation not established"
+    }
+  ],
+  "errors": [],
+  "initialObservation": {
+    "platform": "web",
+    "location": {
+      "url": "http://fixture.invalid/"
+    },
+    "text": "Title: Example. Unsaved. Save; Cancel",
+    "elements": [],
+    "errors": [
+      "pageerror: Save handler crashed"
+    ]
+  },
+  "finalObservation": {
+    "platform": "web",
+    "location": {
+      "url": "http://fixture.invalid/"
+    },
+    "text": "Save failed: application error",
+    "elements": [],
+    "errors": [
+      "pageerror: Save handler crashed"
+    ],
+    "diagnostics": [
+      {
+        "schemaVersion": 1,
+        "id": "diagnostic-1",
+        "source": "application",
+        "occurredAt": "2026-01-01T00:00:01.005Z",
+        "kind": "http_error",
+        "message": "HTTP 500",
+        "request": {
+          "id": "request-1",
+          "startedAt": "2026-01-01T00:00:01.002Z",
+          "method": "POST",
+          "url": "http://fixture.invalid/save",
+          "status": 500
+        }
+      }
+    ]
+  }
+}
